@@ -1,0 +1,9 @@
+[package]
+name = "agentcfg-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "agentcfg"
+path = "src/main.rs"
