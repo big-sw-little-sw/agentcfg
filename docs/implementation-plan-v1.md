@@ -39,11 +39,11 @@ Goal: create a compiling workspace with clear CLI/core ownership before feature 
 
 #### Task M0.1: Create Cargo workspace
 
-- [ ] Add root `Cargo.toml` with `agentcfg-cli` and `agentcfg-core` members.
-- [ ] Add `crates/agentcfg-core/Cargo.toml` and `src/lib.rs`.
-- [ ] Add `crates/agentcfg-cli/Cargo.toml` and `src/main.rs`.
-- [ ] Configure the CLI package to publish a binary named `agentcfg`.
-- [ ] Add minimal smoke tests or compile checks for both crates.
+- [x] Add root `Cargo.toml` with `agentcfg-cli` and `agentcfg-core` members.
+- [x] Add `crates/agentcfg-core/Cargo.toml` and `src/lib.rs`.
+- [x] Add `crates/agentcfg-cli/Cargo.toml` and `src/main.rs`.
+- [x] Configure the CLI package to publish a binary named `agentcfg`.
+- [x] Add minimal smoke tests or compile checks for both crates.
 
 Validation:
 
