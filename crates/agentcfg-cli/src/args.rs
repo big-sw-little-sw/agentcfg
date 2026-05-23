@@ -1,0 +1,117 @@
+use clap::{Args, Parser, Subcommand};
+
+#[derive(Debug, Parser)]
+#[command(name = "agentcfg")]
+#[command(about = "Manage agent skills as repeatable desired state")]
+pub(crate) struct Cli {
+    #[command(subcommand)]
+    pub(crate) command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum Command {
+    #[command(about = "Create an agentcfg config file")]
+    Init(InitArgs),
+
+    #[command(about = "Preview skill changes without writing them")]
+    Plan(PlanArgs),
+
+    #[command(about = "Apply configured skill changes")]
+    Sync(SyncArgs),
+
+    #[command(about = "Remove stale managed skill artifacts")]
+    Prune(TargetScopeArgs),
+
+    #[command(about = "Show managed skill state")]
+    Status(TargetScopeArgs),
+
+    #[command(about = "Check local configuration and environment")]
+    Doctor,
+}
+
+#[derive(Args, Debug)]
+#[group(multiple = false)]
+pub(crate) struct InitArgs {
+    #[arg(long)]
+    pub(crate) project: bool,
+
+    #[arg(long)]
+    pub(crate) user: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct PlanArgs {
+    #[arg(long)]
+    pub(crate) user: bool,
+
+    #[arg(long)]
+    pub(crate) upgrade: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct SyncArgs {
+    #[arg(long)]
+    pub(crate) user: bool,
+
+    #[arg(long)]
+    pub(crate) upgrade: bool,
+}
+
+#[derive(Args, Debug)]
+pub(crate) struct TargetScopeArgs {
+    #[arg(long)]
+    pub(crate) user: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn parses_supported_command_forms() {
+        for args in [
+            ["agentcfg", "init"].as_slice(),
+            ["agentcfg", "init", "--project"].as_slice(),
+            ["agentcfg", "init", "--user"].as_slice(),
+            ["agentcfg", "plan"].as_slice(),
+            ["agentcfg", "plan", "--upgrade"].as_slice(),
+            ["agentcfg", "plan", "--user"].as_slice(),
+            ["agentcfg", "plan", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "sync"].as_slice(),
+            ["agentcfg", "sync", "--upgrade"].as_slice(),
+            ["agentcfg", "sync", "--user"].as_slice(),
+            ["agentcfg", "sync", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "prune"].as_slice(),
+            ["agentcfg", "prune", "--user"].as_slice(),
+            ["agentcfg", "status"].as_slice(),
+            ["agentcfg", "status", "--user"].as_slice(),
+            ["agentcfg", "doctor"].as_slice(),
+        ] {
+            Cli::try_parse_from(args).unwrap_or_else(|error| {
+                panic!("expected {args:?} to parse, got {error}");
+            });
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_command_forms() {
+        for args in [
+            ["agentcfg", "init", "--project", "--user"].as_slice(),
+            ["agentcfg", "init", "--upgrade"].as_slice(),
+            ["agentcfg", "prune", "--upgrade"].as_slice(),
+            ["agentcfg", "status", "--upgrade"].as_slice(),
+            ["agentcfg", "doctor", "--user"].as_slice(),
+            ["agentcfg", "doctor", "--upgrade"].as_slice(),
+            ["agentcfg", "plan", "--project"].as_slice(),
+            ["agentcfg", "sync", "--project"].as_slice(),
+            ["agentcfg", "prune", "--project"].as_slice(),
+            ["agentcfg", "status", "--project"].as_slice(),
+        ] {
+            assert!(
+                Cli::try_parse_from(args).is_err(),
+                "expected {args:?} to be rejected"
+            );
+        }
+    }
+}

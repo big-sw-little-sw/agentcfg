@@ -11,7 +11,9 @@ The plan is optimized for agent execution. Each task should be small enough that
 - Do not mix domain logic, persistence, filesystem mutation, and CLI rendering in one task unless the task is explicitly an end-to-end slice.
 - Add tests in the same task as the behavior unless the task is scaffolding only.
 - If a task exposes a hidden design decision, stop and update `design-v1.md` before implementing.
-- Keep the core crate skill-first. Do not introduce generic resource abstractions before a second resource kind exists.
+- Keep the core crate skill-first. Share target planning/apply/status/prune around structured desired target artifacts, but do not introduce generic resource manager traits, factories, or interfaces before a second resource kind exists.
+- Treat CLI command handlers as adapters into core workflow APIs. As lower-level behavior is implemented, expose focused core APIs for config paths, config parsing, source/skill resolution, desired target state, planning, apply/prune safety, status, and doctor checks. The CLI should not orchestrate those lower-level steps directly.
+- If a future resource-kind or resource-specific CLI selector question appears during V1 work, record it in the post-V1 holding area in `design-v1.md` instead of expanding V1 scope.
 
 ## Workspace Shape
 
@@ -67,17 +69,21 @@ cargo test --workspace
 
 ### M1: CLI Surface and Config Paths
 
-Goal: make every V1 command invocable while keeping behavior stubbed until core operations exist.
+Goal: make every V1 command invocable while keeping behavior stubbed until core workflows and config path APIs exist.
 
 #### Task M1.1: Define CLI command surface
 
-- [ ] Introduce `clap` for command parsing instead of growing manual argument parsing.
-- [ ] Add `init`, `plan`, `sync`, `prune`, `status`, and `doctor`.
-- [ ] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
-- [ ] Reject invalid flag combinations through argument parsing where possible.
-- [ ] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
-- [ ] Route each command to a small CLI handler that calls a core stub.
-- [ ] Add CLI snapshot or assertion tests for supported and rejected command forms.
+- [x] Introduce `clap` for command parsing instead of growing manual argument parsing.
+- [x] Add `init`, `plan`, `sync`, `prune`, `status`, and `doctor`.
+- [x] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
+- [x] Reject invalid flag combinations through argument parsing where possible.
+- [x] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
+- [x] Route each command to a small CLI handler that calls a core workflow stub using structured request/result types.
+- [x] Keep workflow APIs namespaced under `agentcfg_core::workflow`; do not root-re-export every stub type before behavior exists.
+- [x] Mark public workflow request/result structs `#[non_exhaustive]` when later fields are plausible; do not mark stable domain enums non-exhaustive without a concrete reason.
+- [x] Introduce shared `ConfigScope`, `TargetScope`, and source-resolution intent types for later core tasks to reuse.
+- [x] Keep M1.1 workflow stubs thin; do not introduce speculative lower-level planner/apply APIs before real behavior exists.
+- [x] Add CLI snapshot or assertion tests for supported and rejected command forms, including at least one full binary usage-error path.
 
 Validation:
 
@@ -88,11 +94,12 @@ cargo run -p agentcfg-cli -- plan --help
 
 #### Task M1.2: Model config scopes and paths in core
 
-- [ ] Add scope values: `project`, `user-project`, and `user`.
+- [ ] Reuse the shared scope values introduced in M1.1: `project`, `user-project`, and `user`.
 - [ ] Add path resolution for shared project config, personal project config, and user config.
 - [ ] Add path resolution for adjacent lockfiles.
 - [ ] Add generated state path resolution for project and user scopes.
 - [ ] Keep repo-root discovery minimal and local; do not add global org/team discovery.
+- [ ] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
 - [ ] Add tests using temporary directories and controlled environment variables.
 
 Validation:
@@ -108,6 +115,7 @@ cargo test -p agentcfg-core config_paths
 - [ ] Validate required `[[skill_sources]].id`.
 - [ ] Validate required `[skills].clients`.
 - [ ] Keep `exclude` unsupported in V1.
+- [ ] Expose lower-level config load/parse/validate APIs returning structured config models for the active layer types.
 - [ ] Add tests for valid shared, personal, and user configs plus validation failures.
 
 Validation:
@@ -123,6 +131,7 @@ cargo test -p agentcfg-core config
 - [ ] Do not write client target directories.
 - [ ] Refuse to overwrite existing config files.
 - [ ] Report existing unmanaged client artifacts without adopting them.
+- [ ] Implement `init` as a core workflow that composes config path APIs with conservative file creation.
 - [ ] Add CLI/core tests for each init mode.
 
 Validation:
@@ -154,6 +163,7 @@ cargo test -p agentcfg-core path_source_discovery
 - [ ] Select all discovered skills when neither `include` nor `groups` is set.
 - [ ] Select only named skills when `include` is set.
 - [ ] Report missing included skills with source and layer context.
+- [ ] Keep selection output structured for later aliasing, materialization, and desired-target construction.
 - [ ] Add tests for all-skills, included-skills, and missing-include cases.
 
 Validation:
@@ -182,6 +192,7 @@ cargo test -p agentcfg-core source_groups
 - [ ] Treat installed name as runtime identity.
 - [ ] Preserve original source names for lockfile and manifest records.
 - [ ] Keep output structured enough for later target-path collision detection.
+- [ ] Expose the skill resolution output as a lower-level core API, not a CLI-rendered summary.
 - [ ] Add tests for alias success, unaliased skills, and original-name preservation.
 
 Validation:
@@ -312,6 +323,7 @@ cargo test -p agentcfg-core locked_path_sync
 - [ ] Make `plan --upgrade` refresh path-source hashes in memory only.
 - [ ] Make `sync --upgrade` rewrite active lockfiles.
 - [ ] Make `sync --upgrade` materialize refreshed managed trees.
+- [ ] Thread `SourceResolutionMode` or equivalent workflow intent into lower-level resolution APIs without using CLI flag-shaped booleans.
 - [ ] Verify non-upgrade `plan` and `plan --upgrade` do not write persistent state.
 - [ ] Add tests for changed source content and read-only plan behavior.
 
@@ -327,10 +339,13 @@ Goal: produce structured plans once and render them through the CLI.
 
 #### Task M5.1: Implement built-in client target registry
 
-- [ ] Add V1 default clients and target paths.
+- [ ] Add V1 default clients and skill target paths.
+- [ ] Key registry entries by `{resource_kind, client, scope}` with only `resource_kind = "skill"` in V1.
 - [ ] Represent project and user target paths.
 - [ ] Represent confidence/provenance metadata for diagnostics.
 - [ ] Resolve shared `.agents/skills/{name}` target paths for Codex, Pi, OpenCode, and Cursor.
+- [ ] Resolve Cline through `.cline/skills/{name}` and `~/.cline/skills/{name}` with experimental provenance.
+- [ ] Do not model shared `.agents` support as a client-family interface; use multiple client entries that resolve to the same path.
 - [ ] Add tests for every built-in client target.
 
 Validation:
@@ -344,6 +359,9 @@ cargo test -p agentcfg-core client_registry
 - [ ] Combine shared project and personal project layers for project commands.
 - [ ] Use only user config for `--user` commands.
 - [ ] Apply additive client selection across active layers.
+- [ ] Convert resolved skills into structured desired target artifacts before planning target changes.
+- [ ] Include kind, target path, target mode, managed source path, installed name, installed hash, source/layer provenance, and consuming `{scope, client}` pairs in desired target artifacts.
+- [ ] Expose desired target state construction as a lower-level core API that `plan`, `sync`, `status`, and `prune` can share.
 - [ ] Do not add CLI `--client` unless `prd.md` and `design-v1.md` are updated first.
 - [ ] Add tests for project layering, user-only mode, and shared target consumers.
 
@@ -363,6 +381,8 @@ cargo test -p agentcfg-core desired_state
 - [ ] Generate consumer addition entries.
 - [ ] Generate stale consumer/artifact entries for reporting only.
 - [ ] Keep plan records structured and free of terminal formatting.
+- [ ] Keep planner records resource-kind aware but skill-first; do not add generic resource manager interfaces.
+- [ ] Expose the planner as a lower-level core API that consumes desired target artifacts and current lock/manifest state.
 - [ ] Add tests for create, update, no-op, and stale reporting plans.
 
 Validation:
@@ -390,7 +410,7 @@ Goal: safely mutate only manifest-owned target artifacts.
 
 #### Task M6.1: Define manifest models and JSON persistence
 
-- [ ] Model manifest records with kind, source id, original name, installed name, target path, target kind, installed hash, consumers, created-by marker, source acquisition mode, and target mode.
+- [ ] Model manifest records with resource kind, source id, original name, installed name, target path, target kind, installed hash, consumers, created-by marker, source acquisition mode, and target mode.
 - [ ] Read and write project and user manifests.
 - [ ] Preserve structured consumers by `{scope, client}`.
 - [ ] Add round-trip and ordering tests.
@@ -408,6 +428,7 @@ cargo test -p agentcfg-core manifest
 - [ ] Refuse to overwrite unmanaged files or unexpected symlinks.
 - [ ] Add required consumers to manifest records.
 - [ ] Warn when stale artifacts remain after sync.
+- [ ] Expose sync apply as a lower-level core API that consumes structured plan entries; keep terminal warnings in the CLI renderer.
 - [ ] Add tests for create, safe update, unmanaged conflict, and unexpected symlink refusal.
 
 Validation:
@@ -422,6 +443,7 @@ cargo test -p agentcfg-core sync_apply
 - [ ] Mark removed layer/client pairs as stale consumers.
 - [ ] Mark target artifacts with no remaining consumers as stale artifacts.
 - [ ] Detect unused managed source trees as cache leftovers.
+- [ ] Expose stale-state detection as a lower-level core API shared by plan reporting and prune.
 - [ ] Add tests for shared `.agents/skills` consumers across Codex, Pi, OpenCode, and Cursor.
 
 Validation:
@@ -437,6 +459,7 @@ cargo test -p agentcfg-core stale_state shared_consumers
 - [ ] Refuse to prune unexpected symlink targets.
 - [ ] Never delete unmanaged real files.
 - [ ] Delete directories only if empty and manifest-owned.
+- [ ] Expose prune apply as a lower-level core API that consumes stale-state records.
 - [ ] Add tests for each safety invariant.
 
 Validation:
@@ -457,6 +480,7 @@ Goal: expose local consistency and environment diagnostics without duplicating p
 - [ ] Report stale artifacts and cache leftovers.
 - [ ] Report config/lock mismatch.
 - [ ] Report unmanaged artifacts as informational unless they conflict.
+- [ ] Expose status checks as structured core results so CLI rendering stays separate.
 - [ ] Add tests using temporary manifests and target directories.
 
 Validation:
@@ -487,6 +511,7 @@ cargo test --workspace status_render
 - [ ] Check config schema validity.
 - [ ] Check unmanaged artifacts only when they block planned target paths.
 - [ ] Keep optional network/source checks isolated so local doctor remains deterministic in tests.
+- [ ] Expose doctor checks as structured core results with severity and context; do not return terminal-formatted text from core.
 - [ ] Add tests with injectable command/path probes.
 
 Validation:
@@ -599,6 +624,7 @@ Run before declaring V1 complete:
 - [ ] Alias collision behavior is covered.
 - [ ] Internal symlink materialization and external symlink rejection are covered.
 - [ ] Shared `.agents/skills` consumers across Codex/Pi/OpenCode/Cursor are covered.
+- [ ] Cline native `.cline/skills` target behavior is covered with experimental provenance.
 - [ ] Git source sync and upgrade behavior are covered by local fixture repositories.
 
 ## Open Planning Questions

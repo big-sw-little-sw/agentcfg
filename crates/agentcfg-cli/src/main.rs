@@ -1,13 +1,10 @@
 use std::process::ExitCode;
 
-const HELP: &str = "\
-agentcfg
+use clap::Parser;
+use clap::error::ErrorKind;
 
-Usage: agentcfg [OPTIONS]
-
-Options:
-  -h, --help    Print help
-";
+mod args;
+mod commands;
 
 fn main() -> ExitCode {
     match run() {
@@ -20,15 +17,29 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), CliError> {
-    let show_help = std::env::args_os()
-        .nth(1)
-        .is_none_or(|arg| arg == "--help" || arg == "-h");
+    let Some(cli) = parse_cli()? else {
+        return Ok(());
+    };
 
-    if show_help {
-        print!("{HELP}");
+    commands::handle(cli)
+}
+
+fn parse_cli() -> Result<Option<args::Cli>, CliError> {
+    match args::Cli::try_parse() {
+        Ok(cli) => Ok(Some(cli)),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) =>
+        {
+            error
+                .print()
+                .map_err(|error| CliError::Unexpected(anyhow::Error::from(error)))?;
+            Ok(None)
+        }
+        Err(error) => Err(CliError::from(error)),
     }
-
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -63,9 +74,18 @@ impl From<agentcfg_core::Error> for CliError {
     }
 }
 
+impl From<clap::Error> for CliError {
+    fn from(error: clap::Error) -> Self {
+        Self::Usage {
+            message: error.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn core_errors_exit_one() {
@@ -83,6 +103,15 @@ mod tests {
         };
 
         assert_eq!(error.exit_code(), ExitCode::from(2));
+    }
+
+    #[test]
+    fn clap_errors_exit_two_after_mapping() {
+        let error = args::Cli::try_parse_from(["agentcfg", "doctor", "--user"]).unwrap_err();
+        let cli_error = CliError::from(error);
+
+        assert!(matches!(cli_error, CliError::Usage { .. }));
+        assert_eq!(cli_error.exit_code(), ExitCode::from(2));
     }
 
     #[test]

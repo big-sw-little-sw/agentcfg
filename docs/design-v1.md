@@ -333,7 +333,9 @@ Never remove user-authored source directories.
 
 ## Client Target Registry
 
-Client target definitions should be built-in defaults with docs-backed provenance and confidence levels.
+Client target definitions should be built-in defaults with docs-backed provenance and confidence levels. The registry is the V1 compatibility boundary between client-specific filesystem conventions and the shared planning/apply engine.
+
+Registry entries should be keyed by `{resource_kind, client, scope}`. V1 only registers `resource_kind = "skill"`, but including the key keeps manifests, plan records, and diagnostics from baking in skill-only assumptions about target ownership.
 
 Default policy:
 
@@ -359,7 +361,9 @@ Known native alternatives should be represented in the registry but not necessar
 - Cline compatibility paths: `.clinerules/skills/{name}`, `.claude/skills/{name}`
 - Cursor: `.cursor/skills/{name}`, `~/.cursor/skills/{name}`
 
-The registry should carry confidence/provenance metadata so `doctor` can explain uncertain or experimental targets.
+The registry should carry confidence/provenance metadata so `doctor` can explain uncertain or experimental targets. Cline's first-class skill support is experimental, so the Cline `.cline/skills/{name}` target should be enabled with explicit provenance and an experimental confidence note. Do not use `.agents/skills/{name}` for Cline unless Cline documents or implements that discovery path.
+
+Client families such as clients that share `.agents/skills/{name}` should be represented as multiple client registry entries that resolve to the same target path, not as a separate family interface. Shared target behavior belongs to the consumer model.
 
 ## Shared Target Consumers
 
@@ -519,10 +523,21 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 Keep implementation design skill-first. The planner/apply boundary is the important one:
 
 ```text
-resolve desired state -> build plan -> render plan OR apply plan
+resolve resource-specific desired state -> desired target artifacts -> build plan -> render plan OR apply plan
 ```
 
 `plan` and `sync` should share the same planner.
+
+V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired target artifacts:
+
+- `kind = "skill"`
+- target path and target mode
+- managed source path
+- installed name and installed hash
+- source/layer provenance
+- consuming `{scope, client}` pairs
+
+This keeps the current implementation skill-first while avoiding skill-specific duplication in target planning, manifest safety, and client diagnostics.
 
 ## Cargo Workspace Boundary
 
@@ -563,6 +578,49 @@ Do not make the core crate a broad generic platform in V1. Its public surface sh
 
 ## Future Resource Types
 
-V1 should be implemented as a skill-first planner and applier. It is acceptable for manifest or plan records to include a small `kind = "skill"` marker, but do not build generic resource operations before a second resource kind exists.
+V1 should be implemented as a skill-first resolver plus shared target planning and application. It is acceptable for manifest or plan records to include `kind = "skill"` and for the client registry to key entries by resource kind, but do not build generic resource manager traits, factories, or interfaces before a second resource kind exists.
 
 Future versions may add resource kinds such as MCP servers, hooks, rules, commands, and workflows. MCP should be a separate resource kind later, not a projection of a skill.
+
+## Post-V1 Design Holding Area
+
+These are intentionally deferred decisions. They are not V1 commitments, but V1 should avoid choices that make them hard.
+
+### Resource-specific CLI selectors
+
+The default command meaning should be aggregate desired-state sync:
+
+```text
+agentcfg sync = sync all configured resource types for the selected scope
+```
+
+In V1, skills are the only configured resource type, so `agentcfg sync` only installs skills as a consequence of the V1 resource set. Do not define the command's meaning as "sync skills"; that would make adding MCP or other resources later a semantic change.
+
+Possible future narrowing commands:
+
+```text
+agentcfg plan skills
+agentcfg sync skills
+agentcfg status skills
+agentcfg prune skills
+
+agentcfg plan mcp
+agentcfg sync mcp
+agentcfg status mcp
+```
+
+These commands should narrow the aggregate workflow to one resource kind. They should not be required for normal setup.
+
+### Additional resource kinds
+
+Future resource kinds may include MCP servers, hooks, rules, commands, and workflows. Each resource kind should own its own config parsing, source resolution, conflict rules, safety rules, and apply behavior. Shared core code may coordinate structured plan/status/apply results, but it should not force every resource into the skill target artifact model.
+
+### MCP design questions
+
+Deferred MCP work should answer:
+
+- how server identity and conflicts are represented
+- how environment variables and secrets are referenced without leaking into shared config or lockfiles
+- whether MCP sync writes project config, user config, client-native config, or some combination
+- how dry-run, rollback, and unmanaged-edit safety work for JSON or settings-file edits
+- whether MCP sources need their own source acquisition and lock model or only desired server records

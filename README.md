@@ -6,7 +6,7 @@ It is designed to consume skills from filesystem or git sources, resolve them in
 
 ## Status
 
-Early design stage. The current repository contains the V1 PRD and design notes; implementation has not started yet.
+Early implementation stage. The repository contains the V1 PRD and design notes, plus the initial Cargo workspace, CLI command surface, and core workflow stubs.
 
 ## Goals
 
