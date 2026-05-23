@@ -225,6 +225,6 @@ It should check git availability, repo root detection, supported clients, path w
 
 ## Open Product Questions
 
-- Whether git sources are in the first implementation slice or come after path sources.
+- Whether git sources are in the first implementation slice or come after path sources - Answered: YES
 - How much source provenance to expose for client target registry decisions.
 - Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` source layouts should be accepted in V1.

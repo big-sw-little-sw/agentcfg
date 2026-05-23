@@ -524,6 +524,43 @@ resolve desired state -> build plan -> render plan OR apply plan
 
 `plan` and `sync` should share the same planner.
 
+## Cargo Workspace Boundary
+
+V1 should use a single Cargo workspace with separate CLI and core library crates:
+
+```text
+crates/agentcfg-cli/
+crates/agentcfg-core/
+```
+
+The `agentcfg-cli` crate owns the command-line interface:
+
+- argument parsing
+- terminal rendering
+- exit codes
+- command-specific user interaction
+
+The `agentcfg-core` crate owns the reusable skill-management engine:
+
+- config discovery, parsing, and validation
+- source discovery and resolution
+- safe materialization and hashing
+- lockfile and manifest models
+- desired-state planning
+- sync, prune, status, and doctor operations
+- built-in client target registry
+- filesystem safety invariants
+
+The published binary name remains:
+
+```text
+agentcfg
+```
+
+The core crate is the boundary for future non-CLI interfaces such as a TUI, desktop UI, editor integration, daemon, or tests that need structured plan/status results. Those interfaces should call the same planner and operation APIs as the CLI instead of shelling out to the `agentcfg` binary or duplicating planner logic.
+
+Do not make the core crate a broad generic platform in V1. Its public surface should remain skill-first and should expose structured domain results rather than terminal-formatted text. A separately branded `agentcfg-sdk` crate or stabilized external API can be added later if real downstream consumers need stronger compatibility guarantees.
+
 ## Future Resource Types
 
 V1 should be implemented as a skill-first planner and applier. It is acceptable for manifest or plan records to include a small `kind = "skill"` marker, but do not build generic resource operations before a second resource kind exists.
