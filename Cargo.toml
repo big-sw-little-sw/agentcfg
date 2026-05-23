@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/agentcfg-cli",
+    "crates/agentcfg-core",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "BSD-3-Clause"
+version = "0.1.0"
