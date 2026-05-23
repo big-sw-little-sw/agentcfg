@@ -54,10 +54,10 @@ cargo run -p agentcfg-cli -- --help
 
 #### Task M0.2: Establish shared result and error conventions
 
-- [ ] Add a core `Result<T>` alias and error type.
-- [ ] Add CLI error-to-exit-code mapping.
-- [ ] Keep terminal formatting out of core errors except concise diagnostic strings.
-- [ ] Add tests for at least one CLI error mapping.
+- [x] Add a core `Result<T>` alias and error type.
+- [x] Add CLI error-to-exit-code mapping.
+- [x] Keep terminal formatting out of core errors except concise diagnostic strings.
+- [x] Add tests for at least one CLI error mapping.
 
 Validation:
 
@@ -71,9 +71,11 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 
 #### Task M1.1: Define CLI command surface
 
+- [ ] Introduce `clap` for command parsing instead of growing manual argument parsing.
 - [ ] Add `init`, `plan`, `sync`, `prune`, `status`, and `doctor`.
 - [ ] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
 - [ ] Reject invalid flag combinations through argument parsing where possible.
+- [ ] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
 - [ ] Route each command to a small CLI handler that calls a core stub.
 - [ ] Add CLI snapshot or assertion tests for supported and rejected command forms.
 
