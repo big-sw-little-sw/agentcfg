@@ -81,7 +81,7 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 - [x] Route each command to a small CLI handler that calls a core workflow stub using structured request/result types.
 - [x] Keep workflow APIs namespaced under `agentcfg_core::workflow`; do not root-re-export every stub type before behavior exists.
 - [x] Mark public workflow request/result structs `#[non_exhaustive]` when later fields are plausible; do not mark stable domain enums non-exhaustive without a concrete reason.
-- [x] Introduce shared `ConfigScope`, `TargetScope`, and source-resolution intent types for later core tasks to reuse.
+- [x] Introduce shared `ConfigLayer`, `InstallScope`, and `SourceResolutionPolicy` types for later core tasks to reuse.
 - [x] Keep M1.1 workflow stubs thin; do not introduce speculative lower-level planner/apply APIs before real behavior exists.
 - [x] Add CLI snapshot or assertion tests for supported and rejected command forms, including at least one full binary usage-error path.
 
@@ -92,12 +92,12 @@ cargo test --workspace
 cargo run -p agentcfg-cli -- plan --help
 ```
 
-#### Task M1.2: Model config scopes and paths in core
+#### Task M1.2: Model config layers, install scopes, and paths in core
 
-- [ ] Reuse the shared scope values introduced in M1.1: `project`, `user-project`, and `user`.
+- [ ] Reuse the shared config layer values introduced in M1.1: `project`, `user-project`, and `user`.
 - [ ] Add path resolution for shared project config, personal project config, and user config.
 - [ ] Add path resolution for adjacent lockfiles.
-- [ ] Add generated state path resolution for project and user scopes.
+- [ ] Add generated state path resolution for project and user install scopes.
 - [ ] Keep repo-root discovery minimal and local; do not add global org/team discovery.
 - [ ] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
 - [ ] Add tests using temporary directories and controlled environment variables.
@@ -323,7 +323,7 @@ cargo test -p agentcfg-core locked_path_sync
 - [ ] Make `plan --upgrade` refresh path-source hashes in memory only.
 - [ ] Make `sync --upgrade` rewrite active lockfiles.
 - [ ] Make `sync --upgrade` materialize refreshed managed trees.
-- [ ] Thread `SourceResolutionMode` or equivalent workflow intent into lower-level resolution APIs without using CLI flag-shaped booleans.
+- [ ] Thread `SourceResolutionPolicy` into lower-level resolution APIs without using CLI flag-shaped booleans.
 - [ ] Verify non-upgrade `plan` and `plan --upgrade` do not write persistent state.
 - [ ] Add tests for changed source content and read-only plan behavior.
 

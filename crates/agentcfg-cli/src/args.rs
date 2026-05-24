@@ -2,28 +2,28 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "agentcfg")]
-#[command(about = "Manage agent skills as repeatable desired state")]
+#[command(about = "Manage agent configuration as repeatable desired state")]
 pub(crate) struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Command,
+    pub(crate) command: CliCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub(crate) enum Command {
+pub(crate) enum CliCommand {
     #[command(about = "Create an agentcfg config file")]
     Init(InitArgs),
 
-    #[command(about = "Preview skill changes without writing them")]
+    #[command(about = "Preview configured changes without writing them")]
     Plan(PlanArgs),
 
-    #[command(about = "Apply configured skill changes")]
+    #[command(about = "Apply configured changes")]
     Sync(SyncArgs),
 
-    #[command(about = "Remove stale managed skill artifacts")]
-    Prune(TargetScopeArgs),
+    #[command(about = "Remove stale managed artifacts")]
+    Prune(InstallScopeArgs),
 
-    #[command(about = "Show managed skill state")]
-    Status(TargetScopeArgs),
+    #[command(about = "Show managed install state")]
+    Status(InstallScopeArgs),
 
     #[command(about = "Check local configuration and environment")]
     Doctor,
@@ -58,7 +58,7 @@ pub(crate) struct SyncArgs {
 }
 
 #[derive(Args, Debug)]
-pub(crate) struct TargetScopeArgs {
+pub(crate) struct InstallScopeArgs {
     #[arg(long)]
     pub(crate) user: bool,
 }

@@ -1,8 +1,8 @@
 # agentcfg
 
-`agentcfg` is a CLI for managing agent skills as repeatable desired state.
+`agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
 
-It is designed to consume skills from filesystem or git sources, resolve them into locked managed state, and install client-specific skill entrypoints safely across project and user scopes.
+It is designed to consume skills from filesystem or git sources, resolve them into locked managed state, and install client-specific skill entrypoints safely across project and user install scopes.
 
 ## Status
 
@@ -39,7 +39,7 @@ agentcfg doctor
 
 `plan` is read-only. `sync` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
 
-## Configuration scopes
+## Configuration Layers
 
 - `agentcfg.toml` / `agentcfg.lock` for shared project configuration.
 - `.agentcfg/config.toml` / `.agentcfg/lock.toml` for personal project configuration.

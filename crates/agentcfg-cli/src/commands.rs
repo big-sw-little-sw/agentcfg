@@ -1,26 +1,26 @@
 use agentcfg_core::workflow::{
-    self, ConfigScope, DoctorRequest, InitRequest, PlanRequest, PruneRequest, SourceResolutionMode,
-    StatusRequest, SyncRequest, TargetScope,
+    self, ConfigLayer, DoctorRequest, InitRequest, InstallScope, PlanRequest, PruneRequest,
+    SourceResolutionPolicy, StatusRequest, SyncRequest,
 };
 
 use crate::CliError;
-use crate::args::{Cli, Command, InitArgs};
+use crate::args::{Cli, CliCommand, InitArgs};
 
 pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
-    match command_action(cli.command) {
-        CommandAction::Init(request) => workflow::init(request).map(|_| ())?,
-        CommandAction::Plan(request) => workflow::plan(request).map(|_| ())?,
-        CommandAction::Sync(request) => workflow::sync(request).map(|_| ())?,
-        CommandAction::Prune(request) => workflow::prune(request).map(|_| ())?,
-        CommandAction::Status(request) => workflow::status(request).map(|_| ())?,
-        CommandAction::Doctor(request) => workflow::doctor(request).map(|_| ())?,
+    match workflow_invocation_for(cli.command) {
+        WorkflowInvocation::Init(request) => workflow::init(request).map(|_| ())?,
+        WorkflowInvocation::Plan(request) => workflow::plan(request).map(|_| ())?,
+        WorkflowInvocation::Sync(request) => workflow::sync(request).map(|_| ())?,
+        WorkflowInvocation::Prune(request) => workflow::prune(request).map(|_| ())?,
+        WorkflowInvocation::Status(request) => workflow::status(request).map(|_| ())?,
+        WorkflowInvocation::Doctor(request) => workflow::doctor(request).map(|_| ())?,
     }
 
     Ok(())
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum CommandAction {
+enum WorkflowInvocation {
     Init(InitRequest),
     Plan(PlanRequest),
     Sync(SyncRequest),
@@ -29,46 +29,52 @@ enum CommandAction {
     Doctor(DoctorRequest),
 }
 
-fn command_action(command: Command) -> CommandAction {
+fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
     match command {
-        Command::Init(args) => CommandAction::Init(InitRequest::new(init_scope(args))),
-        Command::Plan(args) => CommandAction::Plan(PlanRequest::new(
-            target_scope(args.user),
-            resolution_mode(args.upgrade),
+        CliCommand::Init(args) => {
+            WorkflowInvocation::Init(InitRequest::new(init_config_layer(args)))
+        }
+        CliCommand::Plan(args) => WorkflowInvocation::Plan(PlanRequest::new(
+            install_scope(args.user),
+            source_resolution_policy(args.upgrade),
         )),
-        Command::Sync(args) => CommandAction::Sync(SyncRequest::new(
-            target_scope(args.user),
-            resolution_mode(args.upgrade),
+        CliCommand::Sync(args) => WorkflowInvocation::Sync(SyncRequest::new(
+            install_scope(args.user),
+            source_resolution_policy(args.upgrade),
         )),
-        Command::Prune(args) => CommandAction::Prune(PruneRequest::new(target_scope(args.user))),
-        Command::Status(args) => CommandAction::Status(StatusRequest::new(target_scope(args.user))),
-        Command::Doctor => CommandAction::Doctor(DoctorRequest::new()),
+        CliCommand::Prune(args) => {
+            WorkflowInvocation::Prune(PruneRequest::new(install_scope(args.user)))
+        }
+        CliCommand::Status(args) => {
+            WorkflowInvocation::Status(StatusRequest::new(install_scope(args.user)))
+        }
+        CliCommand::Doctor => WorkflowInvocation::Doctor(DoctorRequest::new()),
     }
 }
 
-fn init_scope(args: InitArgs) -> ConfigScope {
+fn init_config_layer(args: InitArgs) -> ConfigLayer {
     if args.project {
-        ConfigScope::Project
+        ConfigLayer::SharedProject
     } else if args.user {
-        ConfigScope::User
+        ConfigLayer::User
     } else {
-        ConfigScope::UserProject
+        ConfigLayer::PersonalProject
     }
 }
 
-fn target_scope(user: bool) -> TargetScope {
+fn install_scope(user: bool) -> InstallScope {
     if user {
-        TargetScope::User
+        InstallScope::User
     } else {
-        TargetScope::Project
+        InstallScope::Project
     }
 }
 
-fn resolution_mode(upgrade: bool) -> SourceResolutionMode {
+fn source_resolution_policy(upgrade: bool) -> SourceResolutionPolicy {
     if upgrade {
-        SourceResolutionMode::Upgrade
+        SourceResolutionPolicy::RefreshSources
     } else {
-        SourceResolutionMode::Locked
+        SourceResolutionPolicy::UseLocked
     }
 }
 
@@ -78,35 +84,35 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn maps_init_forms_to_config_scope() {
+    fn maps_init_forms_to_config_layer() {
         assert_eq!(
-            action_for(["agentcfg", "init"]),
-            CommandAction::Init(InitRequest::new(ConfigScope::UserProject))
+            invocation_for(["agentcfg", "init"]),
+            WorkflowInvocation::Init(InitRequest::new(ConfigLayer::PersonalProject))
         );
         assert_eq!(
-            action_for(["agentcfg", "init", "--project"]),
-            CommandAction::Init(InitRequest::new(ConfigScope::Project))
+            invocation_for(["agentcfg", "init", "--project"]),
+            WorkflowInvocation::Init(InitRequest::new(ConfigLayer::SharedProject))
         );
         assert_eq!(
-            action_for(["agentcfg", "init", "--user"]),
-            CommandAction::Init(InitRequest::new(ConfigScope::User))
+            invocation_for(["agentcfg", "init", "--user"]),
+            WorkflowInvocation::Init(InitRequest::new(ConfigLayer::User))
         );
     }
 
     #[test]
     fn maps_plan_forms_to_workflow_request() {
         assert_eq!(
-            action_for(["agentcfg", "plan"]),
-            CommandAction::Plan(PlanRequest::new(
-                TargetScope::Project,
-                SourceResolutionMode::Locked,
+            invocation_for(["agentcfg", "plan"]),
+            WorkflowInvocation::Plan(PlanRequest::new(
+                InstallScope::Project,
+                SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
-            action_for(["agentcfg", "plan", "--user", "--upgrade"]),
-            CommandAction::Plan(PlanRequest::new(
-                TargetScope::User,
-                SourceResolutionMode::Upgrade,
+            invocation_for(["agentcfg", "plan", "--user", "--upgrade"]),
+            WorkflowInvocation::Plan(PlanRequest::new(
+                InstallScope::User,
+                SourceResolutionPolicy::RefreshSources,
             ))
         );
     }
@@ -114,50 +120,50 @@ mod tests {
     #[test]
     fn maps_sync_forms_to_workflow_request() {
         assert_eq!(
-            action_for(["agentcfg", "sync"]),
-            CommandAction::Sync(SyncRequest::new(
-                TargetScope::Project,
-                SourceResolutionMode::Locked,
+            invocation_for(["agentcfg", "sync"]),
+            WorkflowInvocation::Sync(SyncRequest::new(
+                InstallScope::Project,
+                SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
-            action_for(["agentcfg", "sync", "--user", "--upgrade"]),
-            CommandAction::Sync(SyncRequest::new(
-                TargetScope::User,
-                SourceResolutionMode::Upgrade,
+            invocation_for(["agentcfg", "sync", "--user", "--upgrade"]),
+            WorkflowInvocation::Sync(SyncRequest::new(
+                InstallScope::User,
+                SourceResolutionPolicy::RefreshSources,
             ))
         );
     }
 
     #[test]
-    fn maps_target_scoped_commands_to_workflow_request() {
+    fn maps_install_scoped_commands_to_workflow_request() {
         assert_eq!(
-            action_for(["agentcfg", "prune"]),
-            CommandAction::Prune(PruneRequest::new(TargetScope::Project))
+            invocation_for(["agentcfg", "prune"]),
+            WorkflowInvocation::Prune(PruneRequest::new(InstallScope::Project))
         );
         assert_eq!(
-            action_for(["agentcfg", "prune", "--user"]),
-            CommandAction::Prune(PruneRequest::new(TargetScope::User))
+            invocation_for(["agentcfg", "prune", "--user"]),
+            WorkflowInvocation::Prune(PruneRequest::new(InstallScope::User))
         );
         assert_eq!(
-            action_for(["agentcfg", "status"]),
-            CommandAction::Status(StatusRequest::new(TargetScope::Project))
+            invocation_for(["agentcfg", "status"]),
+            WorkflowInvocation::Status(StatusRequest::new(InstallScope::Project))
         );
         assert_eq!(
-            action_for(["agentcfg", "status", "--user"]),
-            CommandAction::Status(StatusRequest::new(TargetScope::User))
+            invocation_for(["agentcfg", "status", "--user"]),
+            WorkflowInvocation::Status(StatusRequest::new(InstallScope::User))
         );
     }
 
     #[test]
     fn maps_doctor_without_scope() {
         assert_eq!(
-            action_for(["agentcfg", "doctor"]),
-            CommandAction::Doctor(DoctorRequest::new())
+            invocation_for(["agentcfg", "doctor"]),
+            WorkflowInvocation::Doctor(DoctorRequest::new())
         );
     }
 
-    fn action_for<const N: usize>(args: [&str; N]) -> CommandAction {
-        command_action(Cli::parse_from(args).command)
+    fn invocation_for<const N: usize>(args: [&str; N]) -> WorkflowInvocation {
+        workflow_invocation_for(Cli::parse_from(args).command)
     }
 }

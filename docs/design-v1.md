@@ -47,19 +47,19 @@ ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/
 
 `.agentcfg/` should be ignored by default. `agentcfg.lock` is committed only when a project intentionally adopts shared agent config.
 
-## Scopes and Layers
+## Config Layers and Install Scopes
 
-V1 exposes three scopes:
+V1 exposes three config layers:
 
-| Human-facing name | Scope value | Meaning |
-| --- | --- | --- |
-| user config | `user` | Current user's home/config scope. |
-| shared project config | `project` | Shared repo-level config. |
-| personal project config | `user-project` | Personal config for one repo. |
+| Human-facing name | Persisted `scope` value | Core name | Meaning |
+| --- | --- | --- | --- |
+| user config | `user` | `ConfigLayer::User` | Current user's home/config layer. |
+| shared project config | `project` | `ConfigLayer::SharedProject` | Shared repo-level config. |
+| personal project config | `user-project` | `ConfigLayer::PersonalProject` | Personal config for one repo. |
 
 Active layers by command:
 
-| Command | Active config layers | Target scope |
+| Command | Active config layers | Install scope |
 | --- | --- | --- |
 | `agentcfg plan` | shared project config, then personal project config | project |
 | `agentcfg plan --upgrade` | shared project config, then personal project config | project |
@@ -101,6 +101,10 @@ Aliases are applied before collision detection.
 Client selection is additive across active layers. If shared project config selects `codex` and personal project config selects `opencode`, the desired project install includes both clients. CLI `--client` may narrow the resulting configured client set but must not add unconfigured clients in V1.
 
 Consumers are tracked by `{scope, client}`. Removing a skill or client from one layer makes that consumer stale. `prune` removes stale consumers and deletes the target artifact only when no consumers remain.
+
+In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallScope` for project-vs-user target installation, and reserve `target` for concrete client target artifacts such as target paths and target modes.
+
+Use `SourceResolutionPolicy::{UseLocked, RefreshSources}` for the core source-resolution choice so the workflow API does not leak the CLI flag name `--upgrade`.
 
 ## Config Schema
 

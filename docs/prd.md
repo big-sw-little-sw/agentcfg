@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`agentcfg` is a CLI for managing agent skills as repeatable desired state.
+`agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
 
 V1 should be source-agnostic, explicit about lifecycle state, and compatible with the emerging `SKILL.md` Agent Skills ecosystem. It should manage skills well without becoming a full cross-agent configuration platform.
 
@@ -34,7 +34,8 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Target**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
 - **Source**: a filesystem path or git location containing skill directories.
 - **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Targets point to this tree so normal sync can install the locked version without depending on a mutable source path or moving git branch.
-- **Layer**: one active config file participating in planning or sync, such as shared project config or personal project config.
+- **Config layer**: one active config file participating in planning or sync, such as shared project config or personal project config.
+- **Install scope**: whether a command installs or inspects project-level targets or user-level targets.
 - **Consumer**: a `{scope, client}` pair recorded in the manifest to say which config/client consumes an installed target artifact. A shared target can be pruned only when it has no remaining consumers.
 
 ## Config Types
@@ -77,7 +78,7 @@ agentcfg doctor
 
 Command semantics:
 
-- `init`: create config for the selected scope. Default creates personal project config at `.agentcfg/config.toml`.
+- `init`: create config for the selected config layer. Default creates personal project config at `.agentcfg/config.toml`.
 - `init --project`: create shared project config at `agentcfg.toml`.
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `plan`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or targets.
@@ -87,7 +88,7 @@ Command semantics:
 - `prune`: remove stale managed artifacts and stale consumers. It applies by default because `plan` is the preview command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
-- `--user`: use user config and user targets for `plan`, `sync`, `prune`, and `status`. It is not needed for `doctor`, which is diagnostic.
+- `--user`: use user config and user targets for `plan`, `sync`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
 
 ## User Workflows
 

@@ -7,33 +7,33 @@
 use crate::Result;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConfigScope {
-    Project,
-    UserProject,
+pub enum ConfigLayer {
+    SharedProject,
+    PersonalProject,
     User,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TargetScope {
+pub enum InstallScope {
     Project,
     User,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SourceResolutionMode {
-    Locked,
-    Upgrade,
+pub enum SourceResolutionPolicy {
+    UseLocked,
+    RefreshSources,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct InitRequest {
-    pub scope: ConfigScope,
+    pub config_layer: ConfigLayer,
 }
 
 impl InitRequest {
-    pub fn new(scope: ConfigScope) -> Self {
-        Self { scope }
+    pub fn new(config_layer: ConfigLayer) -> Self {
+        Self { config_layer }
     }
 }
 
@@ -44,15 +44,15 @@ pub struct InitResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct PlanRequest {
-    pub target_scope: TargetScope,
-    pub resolution: SourceResolutionMode,
+    pub install_scope: InstallScope,
+    pub source_resolution: SourceResolutionPolicy,
 }
 
 impl PlanRequest {
-    pub fn new(target_scope: TargetScope, resolution: SourceResolutionMode) -> Self {
+    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
-            target_scope,
-            resolution,
+            install_scope,
+            source_resolution,
         }
     }
 }
@@ -64,15 +64,15 @@ pub struct PlanResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct SyncRequest {
-    pub target_scope: TargetScope,
-    pub resolution: SourceResolutionMode,
+    pub install_scope: InstallScope,
+    pub source_resolution: SourceResolutionPolicy,
 }
 
 impl SyncRequest {
-    pub fn new(target_scope: TargetScope, resolution: SourceResolutionMode) -> Self {
+    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
-            target_scope,
-            resolution,
+            install_scope,
+            source_resolution,
         }
     }
 }
@@ -84,12 +84,12 @@ pub struct SyncResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct PruneRequest {
-    pub target_scope: TargetScope,
+    pub install_scope: InstallScope,
 }
 
 impl PruneRequest {
-    pub fn new(target_scope: TargetScope) -> Self {
-        Self { target_scope }
+    pub fn new(install_scope: InstallScope) -> Self {
+        Self { install_scope }
     }
 }
 
@@ -100,12 +100,12 @@ pub struct PruneResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct StatusRequest {
-    pub target_scope: TargetScope,
+    pub install_scope: InstallScope,
 }
 
 impl StatusRequest {
-    pub fn new(target_scope: TargetScope) -> Self {
-        Self { target_scope }
+    pub fn new(install_scope: InstallScope) -> Self {
+        Self { install_scope }
     }
 }
 
