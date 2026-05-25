@@ -98,7 +98,7 @@ Installed names are not namespaced. After alias resolution, installed skill name
 
 Aliases are applied before collision detection.
 
-Client selection is additive across active layers. If shared project config selects `codex` and personal project config selects `opencode`, the desired project install includes both clients. CLI `--client` may narrow the resulting configured client set but must not add unconfigured clients in V1.
+Client selection is additive across active layers. If shared project config selects `codex` and personal project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, install-scoped commands use the full configured client set for the active layers. CLI `--client` may be repeated to narrow that configured client set, but must not add unconfigured clients in V1.
 
 Consumers are tracked by `{scope, client}`. Removing a skill or client from one layer makes that consumer stale. `prune` removes stale consumers and deletes the target artifact only when no consumers remain.
 
@@ -140,7 +140,7 @@ Rules:
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
-- CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1.
+- CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
 - Aliases are applied after source-local group expansion and before installed-name collision detection.
 

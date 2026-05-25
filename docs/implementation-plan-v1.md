@@ -110,13 +110,16 @@ cargo test -p agentcfg-core config_paths
 
 #### Task M1.3: Implement config parsing and validation
 
+- [ ] Add a focused `agentcfg_core::config` module for V1 skill config models, parsing, loading, and validation.
+- [ ] Centralize persisted `ConfigLayer` scope strings (`project`, `user-project`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
 - [ ] Parse V1 TOML config into skill-specific structs.
 - [ ] Validate `scope` against config location.
 - [ ] Validate required `[[skill_sources]].id`.
 - [ ] Validate required `[skills].clients`.
 - [ ] Keep `exclude` unsupported in V1.
+- [ ] Add structured config validation errors for parse failures, scope mismatch, missing source id, missing clients, and unsupported fields; include enough path/layer/field context for CLI diagnostics without embedding CLI formatting in core.
 - [ ] Expose lower-level config load/parse/validate APIs returning structured config models for the active layer types.
-- [ ] Add tests for valid shared, personal, and user configs plus validation failures.
+- [ ] Add tests for persisted scope string mapping, valid shared, personal, and user configs, and validation failures.
 
 Validation:
 
@@ -126,6 +129,7 @@ cargo test -p agentcfg-core config
 
 #### Task M1.4: Implement `init` file creation
 
+- [ ] Introduce an internal workflow execution context or `init_with_context` helper so cwd, user dirs, project-root discovery, and filesystem effects are injectable in tests and not read ad hoc inside public workflow entrypoints.
 - [ ] Create the correct config file for default, `--project`, and `--user`.
 - [ ] Create `.agentcfg/` only when needed.
 - [ ] Do not write client target directories.
@@ -359,10 +363,12 @@ cargo test -p agentcfg-core client_registry
 - [ ] Combine shared project and personal project layers for project commands.
 - [ ] Use only user config for `--user` commands.
 - [ ] Apply additive client selection across active layers.
+- [ ] Add repeatable CLI `--client` for `plan`, `sync`, `prune`, and `status`; carry it through workflow requests as a client filter.
+- [ ] Treat omitted `--client` as all clients selected by active config layers.
+- [ ] Validate that each requested `--client` is both a known V1 client and selected by the active config; do not let CLI flags add unconfigured clients.
 - [ ] Convert resolved skills into structured desired target artifacts before planning target changes.
 - [ ] Include kind, target path, target mode, managed source path, installed name, installed hash, source/layer provenance, and consuming `{scope, client}` pairs in desired target artifacts.
 - [ ] Expose desired target state construction as a lower-level core API that `plan`, `sync`, `status`, and `prune` can share.
-- [ ] Do not add CLI `--client` unless `prd.md` and `design-v1.md` are updated first.
 - [ ] Add tests for project layering, user-only mode, and shared target consumers.
 
 Validation:

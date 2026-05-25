@@ -37,6 +37,7 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Config layer**: one active config file participating in planning or sync, such as shared project config or personal project config.
 - **Install scope**: whether a command installs or inspects project-level targets or user-level targets.
 - **Consumer**: a `{scope, client}` pair recorded in the manifest to say which config/client consumes an installed target artifact. A shared target can be pruned only when it has no remaining consumers.
+- **Client selector**: an optional CLI filter that narrows an install-scoped command to one or more configured clients.
 
 ## Config Types
 
@@ -63,16 +64,20 @@ agentcfg plan
 agentcfg plan --upgrade
 agentcfg plan --user
 agentcfg plan --user --upgrade
+agentcfg plan --client <client>
 
 agentcfg sync
 agentcfg sync --upgrade
 agentcfg sync --user
 agentcfg sync --user --upgrade
+agentcfg sync --client <client>
 
 agentcfg prune
 agentcfg prune --user
+agentcfg prune --client <client>
 agentcfg status
 agentcfg status --user
+agentcfg status --client <client>
 agentcfg doctor
 ```
 
@@ -89,6 +94,7 @@ Command semantics:
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
 - `--user`: use user config and user targets for `plan`, `sync`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
+- `--client <client>`: narrow `plan`, `sync`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client that is not selected by config in V1.
 
 ## User Workflows
 
