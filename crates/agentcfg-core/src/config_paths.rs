@@ -129,17 +129,22 @@ impl UserDirs {
         xdg_state_home: Option<impl Into<PathBuf>>,
         home: Option<impl Into<PathBuf>>,
     ) -> Result<Self> {
-        let xdg_config_home = non_empty_path(xdg_config_home);
-        let xdg_state_home = non_empty_path(xdg_state_home);
+        let xdg_config_home = absolute_xdg_path(xdg_config_home);
+        let xdg_state_home = absolute_xdg_path(xdg_state_home);
         let home = non_empty_path(home);
 
-        let config_home = match xdg_config_home {
-            Some(path) => path,
-            None => home_fallback(&home, "XDG_CONFIG_HOME", ".config")?,
-        };
-        let state_home = match xdg_state_home {
-            Some(path) => path,
-            None => home_fallback(&home, "XDG_STATE_HOME", ".local/state")?,
+        let (config_home, state_home) = match (xdg_config_home, xdg_state_home, home) {
+            (Some(config_home), Some(state_home), _) => (config_home, state_home),
+            (Some(config_home), None, Some(home)) => {
+                (config_home, xdg_default_dir(&home, ".local/state"))
+            }
+            (None, Some(state_home), Some(home)) => (xdg_default_dir(&home, ".config"), state_home),
+            (None, None, Some(home)) => (
+                xdg_default_dir(&home, ".config"),
+                xdg_default_dir(&home, ".local/state"),
+            ),
+            (None, _, None) => return Err(missing_home_for_xdg_default("XDG_CONFIG_HOME")),
+            (_, None, None) => return Err(missing_home_for_xdg_default("XDG_STATE_HOME")),
         };
 
         Ok(Self::new(config_home, state_home))
@@ -159,28 +164,27 @@ fn non_empty_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
         .filter(|path| !path.as_os_str().is_empty())
 }
 
-fn home_fallback(
-    home: &Option<PathBuf>,
-    xdg_var: &'static str,
-    fallback_suffix: &str,
-) -> Result<PathBuf> {
-    home.as_ref()
-        .map(|home| home.join(fallback_suffix))
-        .ok_or_else(|| PathEnvironmentError::MissingHomeForXdgFallback { xdg_var }.into())
+fn absolute_xdg_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
+    non_empty_path(path).filter(|path| path.is_absolute())
+}
+
+fn xdg_default_dir(home: &Path, fallback_suffix: &str) -> PathBuf {
+    home.join(fallback_suffix)
+}
+
+fn missing_home_for_xdg_default(xdg_var: &'static str) -> crate::Error {
+    PathEnvironmentError::MissingHomeForXdgFallback { xdg_var }.into()
 }
 
 pub fn discover_project_root(start_dir: impl AsRef<Path>) -> Result<PathBuf> {
     let start_dir = start_dir.as_ref();
 
-    if let Some(root) = ancestors(start_dir).find(|ancestor| has_git_marker(ancestor)) {
-        return Ok(root.to_path_buf());
-    }
+    let root = ancestors(start_dir)
+        .find(|ancestor| has_git_marker(ancestor))
+        .or_else(|| ancestors(start_dir).find(|ancestor| has_agentcfg_marker(ancestor)))
+        .unwrap_or(start_dir);
 
-    if let Some(root) = ancestors(start_dir).find(|ancestor| has_agentcfg_marker(ancestor)) {
-        return Ok(root.to_path_buf());
-    }
-
-    Ok(start_dir.to_path_buf())
+    Ok(root.to_path_buf())
 }
 
 fn ancestors(path: &Path) -> impl Iterator<Item = &Path> {
@@ -280,6 +284,32 @@ mod tests {
             UserDirs::from_env_vars(Some(""), None::<&str>, Some("/home/me")).expect("user dirs");
 
         assert_eq!(user_dirs.config_home(), Path::new("/home/me/.config"));
+        assert_eq!(user_dirs.state_home(), Path::new("/home/me/.local/state"));
+    }
+
+    #[test]
+    fn user_dirs_fall_back_to_home_for_relative_xdg_config_home() {
+        let user_dirs = UserDirs::from_env_vars(
+            Some("relative/config"),
+            Some("/xdg/state"),
+            Some("/home/me"),
+        )
+        .expect("user dirs");
+
+        assert_eq!(user_dirs.config_home(), Path::new("/home/me/.config"));
+        assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
+    }
+
+    #[test]
+    fn user_dirs_fall_back_to_home_for_relative_xdg_state_home() {
+        let user_dirs = UserDirs::from_env_vars(
+            Some("/xdg/config"),
+            Some("relative/state"),
+            Some("/home/me"),
+        )
+        .expect("user dirs");
+
+        assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
         assert_eq!(user_dirs.state_home(), Path::new("/home/me/.local/state"));
     }
 
