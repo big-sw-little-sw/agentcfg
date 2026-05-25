@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::scope::ConfigLayer;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
@@ -33,8 +35,59 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigError {
-    #[error("missing required config field `{field}`")]
-    MissingRequiredField { field: &'static str },
+    #[error("failed to parse config at {path}: {source}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error(
+        "config scope mismatch at {path}: expected `{expected_scope}` for {expected_layer:?}, got `{actual_scope}`"
+    )]
+    ScopeMismatch {
+        path: PathBuf,
+        expected_layer: ConfigLayer,
+        expected_scope: &'static str,
+        actual_scope: String,
+    },
+
+    #[error("missing required config field `{field}` at {path} for {layer:?}")]
+    MissingRequiredField {
+        path: PathBuf,
+        layer: ConfigLayer,
+        field: &'static str,
+    },
+
+    #[error("empty required config field `{field}` at {path} for {layer:?}")]
+    EmptyRequiredField {
+        path: PathBuf,
+        layer: ConfigLayer,
+        field: &'static str,
+    },
+
+    #[error("unsupported config field `{field}` at {path} for {layer:?}")]
+    UnsupportedField {
+        path: PathBuf,
+        layer: ConfigLayer,
+        field: &'static str,
+    },
+
+    #[error("unsupported source kind `{kind}` at {path} for {layer:?}")]
+    UnsupportedSourceKind {
+        path: PathBuf,
+        layer: ConfigLayer,
+        source_id: Option<String>,
+        kind: String,
+    },
+
+    #[error("invalid config value `{value}` for `{field}` at {path} for {layer:?}")]
+    InvalidFieldValue {
+        path: PathBuf,
+        layer: ConfigLayer,
+        field: &'static str,
+        value: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -81,10 +134,18 @@ mod tests {
 
     #[test]
     fn converts_and_displays_wrapped_config_error() {
-        let error: Error = ConfigError::MissingRequiredField { field: "scope" }.into();
+        let error: Error = ConfigError::MissingRequiredField {
+            path: PathBuf::from("agentcfg.toml"),
+            layer: ConfigLayer::SharedProject,
+            field: "scope",
+        }
+        .into();
 
         assert!(matches!(error, Error::Config(_)));
-        assert_eq!(error.to_string(), "missing required config field `scope`");
+        assert_eq!(
+            error.to_string(),
+            "missing required config field `scope` at agentcfg.toml for SharedProject"
+        );
     }
 
     #[test]

@@ -94,8 +94,8 @@ cargo run -p agentcfg-cli -- plan --help
 
 #### Task M1.2: Model config layers, install scopes, and paths in core
 
-- [x] Reuse the shared config layer values introduced in M1.1: `project`, `user-project`, and `user`.
-- [x] Add path resolution for shared project config, personal project config, and user config.
+- [x] Reuse the shared config layer values introduced in M1.1: `sharedProject`, `userProject`, and `user`.
+- [x] Add path resolution for shared project config, user project config, and user config.
 - [x] Add path resolution for adjacent lockfiles.
 - [x] Add generated state path resolution for project and user install scopes.
 - [x] Keep repo-root discovery minimal and local; do not add global org/team discovery.
@@ -111,15 +111,15 @@ cargo test -p agentcfg-core config_paths
 #### Task M1.3: Implement config parsing and validation
 
 - [ ] Add a focused `agentcfg_core::config` module for V1 skill config models, parsing, loading, and validation.
-- [ ] Centralize persisted `ConfigLayer` scope strings (`project`, `user-project`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
+- [ ] Centralize persisted `ConfigLayer` scope strings (`sharedProject`, `userProject`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
 - [ ] Parse V1 TOML config into skill-specific structs.
 - [ ] Validate `scope` against config location.
 - [ ] Validate required `[[skill_sources]].id`.
-- [ ] Validate required `[skills].clients`.
+- [ ] Validate required `[skills].clients`; accept either a non-empty explicit client list or `clients = "all"` for all supported clients.
 - [ ] Keep `exclude` unsupported in V1.
 - [ ] Add structured config validation errors for parse failures, scope mismatch, missing source id, missing clients, and unsupported fields; include enough path/layer/field context for CLI diagnostics without embedding CLI formatting in core.
 - [ ] Expose lower-level config load/parse/validate APIs returning structured config models for the active layer types.
-- [ ] Add tests for persisted scope string mapping, valid shared, personal, and user configs, and validation failures.
+- [ ] Add tests for persisted scope string mapping, valid shared, user project, and user configs, and validation failures.
 
 Validation:
 
@@ -360,12 +360,12 @@ cargo test -p agentcfg-core client_registry
 
 #### Task M5.2: Build desired target state from active layers
 
-- [ ] Combine shared project and personal project layers for project commands.
+- [ ] Combine shared project and user project layers for project commands.
 - [ ] Use only user config for `--user` commands.
 - [ ] Apply additive client selection across active layers.
 - [ ] Add repeatable CLI `--client` for `plan`, `sync`, `prune`, and `status`; carry it through workflow requests as a client filter.
 - [ ] Treat omitted `--client` as all clients selected by active config layers.
-- [ ] Validate that each requested `--client` is both a known V1 client and selected by the active config; do not let CLI flags add unconfigured clients.
+- [ ] Validate that each requested `--client` is both a known V1 client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 client. Do not let CLI flags add clients outside the configured selection.
 - [ ] Convert resolved skills into structured desired target artifacts before planning target changes.
 - [ ] Include kind, target path, target mode, managed source path, installed name, installed hash, source/layer provenance, and consuming `{scope, client}` pairs in desired target artifacts.
 - [ ] Expose desired target state construction as a lower-level core API that `plan`, `sync`, `status`, and `prune` can share.

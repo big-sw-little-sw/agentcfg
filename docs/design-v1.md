@@ -17,7 +17,7 @@ agentcfg.toml
 agentcfg.lock
 ```
 
-Personal project config:
+User project config:
 
 ```text
 .agentcfg/config.toml
@@ -54,19 +54,19 @@ V1 exposes three config layers:
 | Human-facing name | Persisted `scope` value | Core name | Meaning |
 | --- | --- | --- | --- |
 | user config | `user` | `ConfigLayer::User` | Current user's home/config layer. |
-| shared project config | `project` | `ConfigLayer::SharedProject` | Shared repo-level config. |
-| personal project config | `user-project` | `ConfigLayer::PersonalProject` | Personal config for one repo. |
+| shared project config | `sharedProject` | `ConfigLayer::SharedProject` | Shared repo-level config. |
+| user project config | `userProject` | `ConfigLayer::UserProject` | Current user's config for one repo. |
 
 Active layers by command:
 
 | Command | Active config layers | Install scope |
 | --- | --- | --- |
-| `agentcfg plan` | shared project config, then personal project config | project |
-| `agentcfg plan --upgrade` | shared project config, then personal project config | project |
-| `agentcfg sync` | shared project config, then personal project config | project |
-| `agentcfg sync --upgrade` | shared project config, then personal project config | project |
+| `agentcfg plan` | shared project config, then user project config | project |
+| `agentcfg plan --upgrade` | shared project config, then user project config | project |
+| `agentcfg sync` | shared project config, then user project config | project |
+| `agentcfg sync --upgrade` | shared project config, then user project config | project |
 | `agentcfg prune` | manifest consumers for project targets | project |
-| `agentcfg status` | shared project config, personal project config, project manifest | project |
+| `agentcfg status` | shared project config, user project config, project manifest | project |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
 | `agentcfg plan --user` | user config only | user |
 | `agentcfg plan --user --upgrade` | user config only | user |
@@ -78,10 +78,10 @@ Active layers by command:
 Layer order:
 
 ```text
-shared project config -> personal project config
+shared project config -> user project config
 ```
 
-Personal project config is additive by default. It may add sources, selected skills, aliases, and clients for the current user in the current repo. It must not silently replace or weaken shared project config. Explicit override semantics are out of V1.
+User project config is additive by default. It may add sources, selected skills, aliases, and clients for the current user in the current repo. It must not silently replace or weaken shared project config. Explicit override semantics are out of V1.
 
 Source ids are namespaced by layer internally:
 
@@ -89,7 +89,7 @@ Source ids are namespaced by layer internally:
 {scope}:{source_id}
 ```
 
-This allows shared project config and personal project config to both use a source id such as `local` without collision. User-facing diagnostics should include both the human source id and the layer when ambiguity matters.
+This allows shared project config and user project config to both use a source id such as `local` without collision. User-facing diagnostics should include both the human source id and the layer when ambiguity matters.
 
 Installed names are not namespaced. After alias resolution, installed skill names must be unique per target path. If two active layers resolve to the same installed name and same target path:
 
@@ -98,7 +98,7 @@ Installed names are not namespaced. After alias resolution, installed skill name
 
 Aliases are applied before collision detection.
 
-Client selection is additive across active layers. If shared project config selects `codex` and personal project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, install-scoped commands use the full configured client set for the active layers. CLI `--client` may be repeated to narrow that configured client set, but must not add unconfigured clients in V1.
+Client selection is additive across active layers. If shared project config selects `codex` and user project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, install-scoped commands use the full configured client set for the active layers. CLI `--client` may be repeated to narrow that configured client set, but must not add clients outside the configured selection in V1.
 
 Consumers are tracked by `{scope, client}`. Removing a skill or client from one layer makes that consumer stale. `prune` removes stale consumers and deletes the target artifact only when no consumers remain.
 
@@ -113,7 +113,7 @@ V1 config is skill-specific. Do not expose or implement a generic resource schem
 Example:
 
 ```toml
-scope = "user-project"
+scope = "userProject"
 
 [[skill_sources]]
 id = "personal"
@@ -129,6 +129,13 @@ groups = ["design"]
 clients = ["codex", "claude", "opencode"]
 ```
 
+To target every client supported by the current `agentcfg` version:
+
+```toml
+[skills]
+clients = "all"
+```
+
 Rules:
 
 - `scope` is required and must match the config location.
@@ -139,8 +146,10 @@ Rules:
 - If neither `include` nor `groups` is set, select all discovered skills from that source.
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
+- `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
+- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `plan` must show the resolved client set before `sync` writes any new target.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
-- CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected.
+- CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
 - Aliases are applied after source-local group expansion and before installed-name collision detection.
 
@@ -314,7 +323,7 @@ Consumers should be structured, not just a string list:
 ```json
 "consumers": [
   {"scope": "project", "client": "codex"},
-  {"scope": "user-project", "client": "codex"}
+  {"scope": "userProject", "client": "codex"}
 ]
 ```
 

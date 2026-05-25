@@ -28,11 +28,11 @@ impl ConfigFilePaths {
         }
     }
 
-    pub fn for_personal_project(project_root: impl AsRef<Path>) -> Self {
+    pub fn for_user_project(project_root: impl AsRef<Path>) -> Self {
         let agentcfg_dir = project_root.as_ref().join(".agentcfg");
 
         Self {
-            layer: ConfigLayer::PersonalProject,
+            layer: ConfigLayer::UserProject,
             config_file: agentcfg_dir.join("config.toml"),
             lockfile: agentcfg_dir.join("lock.toml"),
         }
@@ -215,10 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn personal_project_config_uses_agentcfg_config_and_lockfile() {
-        let paths = ConfigFilePaths::for_personal_project("/repo");
+    fn user_project_config_uses_agentcfg_config_and_lockfile() {
+        let paths = ConfigFilePaths::for_user_project("/repo");
 
-        assert_eq!(paths.layer(), ConfigLayer::PersonalProject);
+        assert_eq!(paths.layer(), ConfigLayer::UserProject);
         assert_eq!(
             paths.config_file(),
             Path::new("/repo/.agentcfg/config.toml")
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn project_root_discovery_uses_personal_config_marker_without_git() {
+    fn project_root_discovery_uses_user_project_config_marker_without_git() {
         let temp = tempfile::tempdir().expect("tempdir");
         let agentcfg_dir = temp.path().join(".agentcfg");
         fs::create_dir(&agentcfg_dir).expect("agentcfg dir");
