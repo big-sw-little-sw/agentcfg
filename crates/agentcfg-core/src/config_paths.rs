@@ -1,0 +1,426 @@
+//! Path derivation for config files, lockfiles, and generated state.
+//!
+//! This module derives paths only. It does not create directories, read config
+//! contents, or mutate the filesystem.
+
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use crate::scope::{ConfigLayer, InstallScope};
+use crate::{PathEnvironmentError, Result};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigFilePaths {
+    layer: ConfigLayer,
+    config_file: PathBuf,
+    lockfile: PathBuf,
+}
+
+impl ConfigFilePaths {
+    pub fn for_shared_project(project_root: impl AsRef<Path>) -> Self {
+        let project_root = project_root.as_ref();
+
+        Self {
+            layer: ConfigLayer::SharedProject,
+            config_file: project_root.join("agentcfg.toml"),
+            lockfile: project_root.join("agentcfg.lock"),
+        }
+    }
+
+    pub fn for_personal_project(project_root: impl AsRef<Path>) -> Self {
+        let agentcfg_dir = project_root.as_ref().join(".agentcfg");
+
+        Self {
+            layer: ConfigLayer::PersonalProject,
+            config_file: agentcfg_dir.join("config.toml"),
+            lockfile: agentcfg_dir.join("lock.toml"),
+        }
+    }
+
+    pub fn for_user_config_home(config_home: impl AsRef<Path>) -> Self {
+        let agentcfg_dir = config_home.as_ref().join("agentcfg");
+
+        Self {
+            layer: ConfigLayer::User,
+            config_file: agentcfg_dir.join("config.toml"),
+            lockfile: agentcfg_dir.join("lock.toml"),
+        }
+    }
+
+    pub fn layer(&self) -> ConfigLayer {
+        self.layer
+    }
+
+    pub fn config_file(&self) -> &Path {
+        &self.config_file
+    }
+
+    pub fn lockfile(&self) -> &Path {
+        &self.lockfile
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeneratedStatePaths {
+    install_scope: InstallScope,
+    manifest: PathBuf,
+    managed_sources_root: PathBuf,
+}
+
+impl GeneratedStatePaths {
+    pub fn for_project(project_root: impl AsRef<Path>) -> Self {
+        let agentcfg_dir = project_root.as_ref().join(".agentcfg");
+
+        Self {
+            install_scope: InstallScope::Project,
+            manifest: agentcfg_dir.join("manifest.json"),
+            managed_sources_root: agentcfg_dir.join("sources"),
+        }
+    }
+
+    pub fn for_user_state_home(state_home: impl AsRef<Path>) -> Self {
+        let agentcfg_dir = state_home.as_ref().join("agentcfg");
+
+        Self {
+            install_scope: InstallScope::User,
+            manifest: agentcfg_dir.join("manifest.json"),
+            managed_sources_root: agentcfg_dir.join("sources"),
+        }
+    }
+
+    pub fn install_scope(&self) -> InstallScope {
+        self.install_scope
+    }
+
+    pub fn manifest(&self) -> &Path {
+        &self.manifest
+    }
+
+    pub fn managed_sources_root(&self) -> &Path {
+        &self.managed_sources_root
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserDirs {
+    config_home: PathBuf,
+    state_home: PathBuf,
+}
+
+impl UserDirs {
+    pub fn new(config_home: impl Into<PathBuf>, state_home: impl Into<PathBuf>) -> Self {
+        Self {
+            config_home: config_home.into(),
+            state_home: state_home.into(),
+        }
+    }
+
+    pub fn from_env() -> Result<Self> {
+        Self::from_env_vars(
+            env::var_os("XDG_CONFIG_HOME"),
+            env::var_os("XDG_STATE_HOME"),
+            env::var_os("HOME"),
+        )
+    }
+
+    pub fn from_env_vars(
+        xdg_config_home: Option<impl Into<PathBuf>>,
+        xdg_state_home: Option<impl Into<PathBuf>>,
+        home: Option<impl Into<PathBuf>>,
+    ) -> Result<Self> {
+        let xdg_config_home = non_empty_path(xdg_config_home);
+        let xdg_state_home = non_empty_path(xdg_state_home);
+        let home = non_empty_path(home);
+
+        let config_home = match xdg_config_home {
+            Some(path) => path,
+            None => home_fallback(&home, "XDG_CONFIG_HOME", ".config")?,
+        };
+        let state_home = match xdg_state_home {
+            Some(path) => path,
+            None => home_fallback(&home, "XDG_STATE_HOME", ".local/state")?,
+        };
+
+        Ok(Self::new(config_home, state_home))
+    }
+
+    pub fn config_home(&self) -> &Path {
+        &self.config_home
+    }
+
+    pub fn state_home(&self) -> &Path {
+        &self.state_home
+    }
+}
+
+fn non_empty_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
+    path.map(Into::into)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+fn home_fallback(
+    home: &Option<PathBuf>,
+    xdg_var: &'static str,
+    fallback_suffix: &str,
+) -> Result<PathBuf> {
+    home.as_ref()
+        .map(|home| home.join(fallback_suffix))
+        .ok_or_else(|| PathEnvironmentError::MissingHomeForXdgFallback { xdg_var }.into())
+}
+
+pub fn discover_project_root(start_dir: impl AsRef<Path>) -> Result<PathBuf> {
+    let start_dir = start_dir.as_ref();
+
+    if let Some(root) = ancestors(start_dir).find(|ancestor| has_git_marker(ancestor)) {
+        return Ok(root.to_path_buf());
+    }
+
+    if let Some(root) = ancestors(start_dir).find(|ancestor| has_agentcfg_marker(ancestor)) {
+        return Ok(root.to_path_buf());
+    }
+
+    Ok(start_dir.to_path_buf())
+}
+
+fn ancestors(path: &Path) -> impl Iterator<Item = &Path> {
+    std::iter::successors(Some(path), |path| path.parent())
+}
+
+fn has_git_marker(path: &Path) -> bool {
+    fs::metadata(path.join(".git")).is_ok()
+}
+
+fn has_agentcfg_marker(path: &Path) -> bool {
+    fs::metadata(path.join("agentcfg.toml")).is_ok()
+        || fs::metadata(path.join(".agentcfg").join("config.toml")).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Error;
+
+    #[test]
+    fn shared_project_config_uses_root_file_and_adjacent_lockfile() {
+        let paths = ConfigFilePaths::for_shared_project("/repo");
+
+        assert_eq!(paths.layer(), ConfigLayer::SharedProject);
+        assert_eq!(paths.config_file(), Path::new("/repo/agentcfg.toml"));
+        assert_eq!(paths.lockfile(), Path::new("/repo/agentcfg.lock"));
+    }
+
+    #[test]
+    fn personal_project_config_uses_agentcfg_config_and_lockfile() {
+        let paths = ConfigFilePaths::for_personal_project("/repo");
+
+        assert_eq!(paths.layer(), ConfigLayer::PersonalProject);
+        assert_eq!(
+            paths.config_file(),
+            Path::new("/repo/.agentcfg/config.toml")
+        );
+        assert_eq!(paths.lockfile(), Path::new("/repo/.agentcfg/lock.toml"));
+    }
+
+    #[test]
+    fn user_config_uses_config_home_without_requiring_state_home() {
+        let paths = ConfigFilePaths::for_user_config_home("/home/me/.config");
+
+        assert_eq!(paths.layer(), ConfigLayer::User);
+        assert_eq!(
+            paths.config_file(),
+            Path::new("/home/me/.config/agentcfg/config.toml")
+        );
+        assert_eq!(
+            paths.lockfile(),
+            Path::new("/home/me/.config/agentcfg/lock.toml")
+        );
+    }
+
+    #[test]
+    fn project_generated_state_uses_project_agentcfg_dir() {
+        let paths = GeneratedStatePaths::for_project("/repo");
+
+        assert_eq!(paths.install_scope(), InstallScope::Project);
+        assert_eq!(paths.manifest(), Path::new("/repo/.agentcfg/manifest.json"));
+        assert_eq!(
+            paths.managed_sources_root(),
+            Path::new("/repo/.agentcfg/sources")
+        );
+    }
+
+    #[test]
+    fn user_generated_state_uses_state_home_without_requiring_config_home() {
+        let paths = GeneratedStatePaths::for_user_state_home("/home/me/.local/state");
+
+        assert_eq!(paths.install_scope(), InstallScope::User);
+        assert_eq!(
+            paths.manifest(),
+            Path::new("/home/me/.local/state/agentcfg/manifest.json")
+        );
+        assert_eq!(
+            paths.managed_sources_root(),
+            Path::new("/home/me/.local/state/agentcfg/sources")
+        );
+    }
+
+    #[test]
+    fn user_dirs_use_xdg_overrides() {
+        let user_dirs =
+            UserDirs::from_env_vars(Some("/xdg/config"), Some("/xdg/state"), Some("/home/me"))
+                .expect("user dirs");
+
+        assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
+        assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
+    }
+
+    #[test]
+    fn user_dirs_fall_back_to_home_for_empty_or_missing_xdg_vars() {
+        let user_dirs =
+            UserDirs::from_env_vars(Some(""), None::<&str>, Some("/home/me")).expect("user dirs");
+
+        assert_eq!(user_dirs.config_home(), Path::new("/home/me/.config"));
+        assert_eq!(user_dirs.state_home(), Path::new("/home/me/.local/state"));
+    }
+
+    #[test]
+    fn user_dirs_allow_missing_home_when_xdg_overrides_are_complete() {
+        let user_dirs =
+            UserDirs::from_env_vars(Some("/xdg/config"), Some("/xdg/state"), None::<&str>)
+                .expect("user dirs");
+
+        assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
+        assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
+    }
+
+    #[test]
+    fn user_dirs_report_missing_home_for_config_home_fallback() {
+        let error = UserDirs::from_env_vars(None::<&str>, Some("/xdg/state"), None::<&str>)
+            .expect_err("missing home should fail");
+
+        assert!(matches!(
+            error,
+            Error::PathEnvironment(PathEnvironmentError::MissingHomeForXdgFallback {
+                xdg_var: "XDG_CONFIG_HOME"
+            })
+        ));
+    }
+
+    #[test]
+    fn user_dirs_report_missing_home_for_state_home_fallback() {
+        let error = UserDirs::from_env_vars(Some("/xdg/config"), None::<&str>, None::<&str>)
+            .expect_err("missing home should fail");
+
+        assert!(matches!(
+            error,
+            Error::PathEnvironment(PathEnvironmentError::MissingHomeForXdgFallback {
+                xdg_var: "XDG_STATE_HOME"
+            })
+        ));
+    }
+
+    #[test]
+    fn project_root_discovery_returns_directory_with_git_dir_marker() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir(temp.path().join(".git")).expect("git marker");
+
+        assert_eq!(
+            discover_project_root(temp.path()).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_walks_up_to_nearest_git_marker() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let nested = temp.path().join("a").join("b");
+        fs::create_dir(temp.path().join(".git")).expect("git marker");
+        fs::create_dir_all(&nested).expect("nested");
+
+        assert_eq!(
+            discover_project_root(&nested).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_accepts_git_file_marker() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join(".git"), "gitdir: ../actual.git").expect("git marker");
+
+        assert_eq!(
+            discover_project_root(temp.path()).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_uses_agentcfg_toml_marker_without_git() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(temp.path().join("agentcfg.toml"), "").expect("agentcfg marker");
+
+        assert_eq!(
+            discover_project_root(temp.path()).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_uses_personal_config_marker_without_git() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let agentcfg_dir = temp.path().join(".agentcfg");
+        fs::create_dir(&agentcfg_dir).expect("agentcfg dir");
+        fs::write(agentcfg_dir.join("config.toml"), "").expect("agentcfg marker");
+
+        assert_eq!(
+            discover_project_root(temp.path()).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_prefers_git_marker_over_nested_agentcfg_marker() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let nested = temp.path().join("a").join("b");
+        let nested_agentcfg = nested.join(".agentcfg");
+
+        fs::create_dir(temp.path().join(".git")).expect("git marker");
+        fs::create_dir_all(&nested_agentcfg).expect("nested agentcfg");
+        fs::write(nested_agentcfg.join("config.toml"), "").expect("agentcfg marker");
+
+        assert_eq!(
+            discover_project_root(&nested).expect("project root"),
+            temp.path()
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_uses_nearest_agentcfg_marker_when_no_git_marker_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let nested = temp.path().join("a").join("b");
+        let parent_agentcfg = temp.path().join("a").join(".agentcfg");
+        let nested_agentcfg = nested.join(".agentcfg");
+
+        fs::create_dir_all(&parent_agentcfg).expect("parent agentcfg");
+        fs::write(parent_agentcfg.join("config.toml"), "").expect("parent marker");
+        fs::create_dir_all(&nested_agentcfg).expect("nested agentcfg");
+        fs::write(nested_agentcfg.join("config.toml"), "").expect("nested marker");
+
+        assert_eq!(
+            discover_project_root(&nested).expect("project root"),
+            nested
+        );
+    }
+
+    #[test]
+    fn project_root_discovery_returns_start_directory_when_no_marker_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let nested = temp.path().join("a").join("b");
+        fs::create_dir_all(&nested).expect("nested");
+
+        assert_eq!(
+            discover_project_root(&nested).expect("project root"),
+            nested
+        );
+    }
+}
