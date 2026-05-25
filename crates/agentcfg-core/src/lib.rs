@@ -1,4 +1,6 @@
+pub mod config_paths;
 mod error;
+pub mod scope;
 pub mod workflow;
 
-pub use error::{ConfigError, Error, Result, SourceError, UnsupportedError};
+pub use error::{ConfigError, Error, PathEnvironmentError, Result, SourceError, UnsupportedError};

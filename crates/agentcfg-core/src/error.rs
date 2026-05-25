@@ -11,6 +11,9 @@ pub enum Error {
     #[error(transparent)]
     Source(#[from] SourceError),
 
+    #[error(transparent)]
+    PathEnvironment(#[from] PathEnvironmentError),
+
     #[error("filesystem error at {path}: {source}")]
     Io {
         path: PathBuf,
@@ -39,6 +42,13 @@ pub enum ConfigError {
 pub enum SourceError {
     #[error("source `{source_id}` was not found")]
     NotFound { source_id: String },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PathEnvironmentError {
+    #[error("HOME is required to resolve the default for {xdg_var}; set HOME or {xdg_var}")]
+    MissingHomeForXdgFallback { xdg_var: &'static str },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -75,5 +85,19 @@ mod tests {
 
         assert!(matches!(error, Error::Config(_)));
         assert_eq!(error.to_string(), "missing required config field `scope`");
+    }
+
+    #[test]
+    fn converts_and_displays_wrapped_path_environment_error() {
+        let error: Error = PathEnvironmentError::MissingHomeForXdgFallback {
+            xdg_var: "XDG_CONFIG_HOME",
+        }
+        .into();
+
+        assert!(matches!(error, Error::PathEnvironment(_)));
+        assert_eq!(
+            error.to_string(),
+            "HOME is required to resolve the default for XDG_CONFIG_HOME; set HOME or XDG_CONFIG_HOME"
+        );
     }
 }

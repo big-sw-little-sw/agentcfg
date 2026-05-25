@@ -5,19 +5,7 @@
 //! should be added when they are needed by implemented behavior.
 
 use crate::Result;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConfigLayer {
-    SharedProject,
-    PersonalProject,
-    User,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InstallScope {
-    Project,
-    User,
-}
+pub use crate::scope::{ConfigLayer, InstallScope};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceResolutionPolicy {

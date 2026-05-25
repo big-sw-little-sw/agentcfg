@@ -94,13 +94,13 @@ cargo run -p agentcfg-cli -- plan --help
 
 #### Task M1.2: Model config layers, install scopes, and paths in core
 
-- [ ] Reuse the shared config layer values introduced in M1.1: `project`, `user-project`, and `user`.
-- [ ] Add path resolution for shared project config, personal project config, and user config.
-- [ ] Add path resolution for adjacent lockfiles.
-- [ ] Add generated state path resolution for project and user install scopes.
-- [ ] Keep repo-root discovery minimal and local; do not add global org/team discovery.
-- [ ] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
-- [ ] Add tests using temporary directories and controlled environment variables.
+- [x] Reuse the shared config layer values introduced in M1.1: `project`, `user-project`, and `user`.
+- [x] Add path resolution for shared project config, personal project config, and user config.
+- [x] Add path resolution for adjacent lockfiles.
+- [x] Add generated state path resolution for project and user install scopes.
+- [x] Keep repo-root discovery minimal and local; do not add global org/team discovery.
+- [x] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
+- [x] Add tests using temporary directories and controlled environment variables.
 
 Validation:
 
