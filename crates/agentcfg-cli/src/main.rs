@@ -90,7 +90,11 @@ mod tests {
     #[test]
     fn core_errors_exit_one() {
         let error = CliError::from(agentcfg_core::Error::from(
-            agentcfg_core::ConfigError::MissingRequiredField { field: "scope" },
+            agentcfg_core::ConfigError::MissingRequiredField {
+                path: "agentcfg.toml".into(),
+                layer: agentcfg_core::workflow::ConfigLayer::SharedProject,
+                field: "scope",
+            },
         ));
 
         assert_eq!(error.exit_code(), ExitCode::from(1));

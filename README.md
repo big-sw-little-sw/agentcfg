@@ -14,7 +14,7 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 - Support standard `SKILL.md` skill directories.
 - Support path and git skill sources.
 - Provide repeatable `plan`, `sync`, and `prune` workflows.
-- Manage shared project, personal project, and user-level configuration.
+- Manage shared project, user project, and user-level configuration.
 - Install only manifest-owned artifacts and prune conservatively.
 - Prefer portable skill paths where clients support them.
 
@@ -42,10 +42,10 @@ agentcfg doctor
 ## Configuration Layers
 
 - `agentcfg.toml` / `agentcfg.lock` for shared project configuration.
-- `.agentcfg/config.toml` / `.agentcfg/lock.toml` for personal project configuration.
+- `.agentcfg/config.toml` / `.agentcfg/lock.toml` for user project configuration.
 - `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml` / `lock.toml` for user configuration.
 
-Project sync reads shared and personal project config. User sync is separate and installs only to user-level targets.
+Project sync reads shared and user project config. User sync is separate and installs only to user-level targets.
 
 ## Supported clients planned for V1
 

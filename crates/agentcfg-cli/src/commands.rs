@@ -58,7 +58,7 @@ fn init_config_layer(args: InitArgs) -> ConfigLayer {
     } else if args.user {
         ConfigLayer::User
     } else {
-        ConfigLayer::PersonalProject
+        ConfigLayer::UserProject
     }
 }
 
@@ -87,7 +87,7 @@ mod tests {
     fn maps_init_forms_to_config_layer() {
         assert_eq!(
             invocation_for(["agentcfg", "init"]),
-            WorkflowInvocation::Init(InitRequest::new(ConfigLayer::PersonalProject))
+            WorkflowInvocation::Init(InitRequest::new(ConfigLayer::UserProject))
         );
         assert_eq!(
             invocation_for(["agentcfg", "init", "--project"]),
