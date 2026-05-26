@@ -72,12 +72,12 @@ struct SkillTargetInspection {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct PlanRequest {
+pub struct PreviewRequest {
     pub install_scope: InstallScope,
     pub source_resolution: SourceResolutionPolicy,
 }
 
-impl PlanRequest {
+impl PreviewRequest {
     pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
             install_scope,
@@ -88,7 +88,7 @@ impl PlanRequest {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct PlanResult {}
+pub struct PreviewResult {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -161,8 +161,8 @@ pub fn init(request: InitRequest) -> Result<InitResult> {
     init_with_context(request, &context)
 }
 
-pub fn plan(_request: PlanRequest) -> Result<PlanResult> {
-    Ok(PlanResult {})
+pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
+    Ok(PreviewResult {})
 }
 
 pub fn sync(_request: SyncRequest) -> Result<SyncResult> {

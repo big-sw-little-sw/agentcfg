@@ -61,15 +61,15 @@ Active layers by command:
 
 | Command | Active config layers | Install scope |
 | --- | --- | --- |
-| `agentcfg plan` | shared project config, then user project config | project |
-| `agentcfg plan --upgrade` | shared project config, then user project config | project |
+| `agentcfg preview` | shared project config, then user project config | project |
+| `agentcfg preview --upgrade` | shared project config, then user project config | project |
 | `agentcfg sync` | shared project config, then user project config | project |
 | `agentcfg sync --upgrade` | shared project config, then user project config | project |
 | `agentcfg prune` | manifest consumers for project targets | project |
 | `agentcfg status` | shared project config, user project config, project manifest | project |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
-| `agentcfg plan --user` | user config only | user |
-| `agentcfg plan --user --upgrade` | user config only | user |
+| `agentcfg preview --user` | user config only | user |
+| `agentcfg preview --user --upgrade` | user config only | user |
 | `agentcfg sync --user` | user config only | user |
 | `agentcfg sync --user --upgrade` | user config only | user |
 | `agentcfg prune --user` | stale consumers and artifacts in user targets | user |
@@ -147,7 +147,7 @@ Rules:
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
-- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `plan` must show the resolved client set before `sync` writes any new target.
+- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `sync` writes any new target.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
 - CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
@@ -248,7 +248,7 @@ Sync direction is one-way:
 source -> managed source tree -> client target
 ```
 
-`agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg plan --upgrade` to preview the import and `agentcfg sync --upgrade` to materialize it into managed state.
+`agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --upgrade` to preview the import and `agentcfg sync --upgrade` to materialize it into managed state.
 
 ## Lockfiles
 
@@ -284,7 +284,7 @@ For path sources:
 - If the current source is unavailable, plain `sync` must fail and ask the user to restore the source or managed state.
 - If the current source is available but no longer matches the locked `source_hash`, plain `sync` must fail and tell the user to run `agentcfg sync --upgrade` only if they want to accept the changed source content.
 - Current path source edits do not affect plain `sync` while the locked managed source tree exists.
-- `plan --upgrade` and `sync --upgrade` detect and use changed path source content.
+- `preview --upgrade` and `sync --upgrade` detect and use changed path source content.
 
 For git sources, plain `sync` installs from the locked managed copy. If that copy is missing, `sync` may recreate it from the locked commit. If the locked commit cannot be fetched, `sync` must fail and ask the user to restore managed state or make the locked commit available; `sync --upgrade` is only appropriate when the user wants to move to a newer resolved commit.
 
@@ -409,7 +409,7 @@ Alias behavior:
 - Alias changes the installed runtime name.
 - Patch the managed copy's `SKILL.md` frontmatter `name`, when present.
 - Do not mutate the upstream source.
-- Emit alias rewrites in `plan`.
+- Emit alias rewrites in `preview`.
 - Summarize alias rewrites in `sync`.
 
 Implementation invariant:
@@ -539,7 +539,7 @@ Keep implementation design skill-first. The planner/apply boundary is the import
 resolve resource-specific desired state -> desired target artifacts -> build plan -> render plan OR apply plan
 ```
 
-`plan` and `sync` should share the same planner.
+`preview` and `sync` should share the same planner.
 
 V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired target artifacts:
 
@@ -612,12 +612,12 @@ In V1, skills are the only configured resource type, so `agentcfg sync` only ins
 Possible future narrowing commands:
 
 ```text
-agentcfg plan skills
+agentcfg preview skills
 agentcfg sync skills
 agentcfg status skills
 agentcfg prune skills
 
-agentcfg plan mcp
+agentcfg preview mcp
 agentcfg sync mcp
 agentcfg status mcp
 ```
