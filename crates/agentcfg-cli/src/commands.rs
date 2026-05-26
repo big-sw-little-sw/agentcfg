@@ -1,5 +1,5 @@
 use agentcfg_core::workflow::{
-    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PlanRequest,
+    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PreviewRequest,
     PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest,
 };
 
@@ -9,7 +9,7 @@ use crate::args::{Cli, CliCommand, InitArgs};
 pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     match workflow_invocation_for(cli.command) {
         WorkflowInvocation::Init(request) => render_init_result(&workflow::init(request)?)?,
-        WorkflowInvocation::Plan(request) => workflow::plan(request).map(|_| ())?,
+        WorkflowInvocation::Preview(request) => workflow::preview(request).map(|_| ())?,
         WorkflowInvocation::Sync(request) => workflow::sync(request).map(|_| ())?,
         WorkflowInvocation::Prune(request) => workflow::prune(request).map(|_| ())?,
         WorkflowInvocation::Status(request) => workflow::status(request).map(|_| ())?,
@@ -53,7 +53,7 @@ fn render_skill_target_warning(warning: &InitWarning) {
 #[derive(Debug, Eq, PartialEq)]
 enum WorkflowInvocation {
     Init(InitRequest),
-    Plan(PlanRequest),
+    Preview(PreviewRequest),
     Sync(SyncRequest),
     Prune(PruneRequest),
     Status(StatusRequest),
@@ -65,7 +65,7 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
         CliCommand::Init(args) => {
             WorkflowInvocation::Init(InitRequest::new(init_config_layer(args)))
         }
-        CliCommand::Plan(args) => WorkflowInvocation::Plan(PlanRequest::new(
+        CliCommand::Preview(args) => WorkflowInvocation::Preview(PreviewRequest::new(
             install_scope(args.user),
             source_resolution_policy(args.upgrade),
         )),
@@ -131,17 +131,17 @@ mod tests {
     }
 
     #[test]
-    fn maps_plan_forms_to_workflow_request() {
+    fn maps_preview_forms_to_workflow_request() {
         assert_eq!(
-            invocation_for(["agentcfg", "plan"]),
-            WorkflowInvocation::Plan(PlanRequest::new(
+            invocation_for(["agentcfg", "preview"]),
+            WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallScope::Project,
                 SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
-            invocation_for(["agentcfg", "plan", "--user", "--upgrade"]),
-            WorkflowInvocation::Plan(PlanRequest::new(
+            invocation_for(["agentcfg", "preview", "--user", "--upgrade"]),
+            WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallScope::User,
                 SourceResolutionPolicy::RefreshSources,
             ))

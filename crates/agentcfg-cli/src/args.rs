@@ -13,8 +13,8 @@ pub(crate) enum CliCommand {
     #[command(about = "Create an agentcfg config file")]
     Init(InitArgs),
 
-    #[command(about = "Preview configured changes without writing them")]
-    Plan(PlanArgs),
+    #[command(name = "preview", about = "Preview configured changes without writing them")]
+    Preview(PreviewArgs),
 
     #[command(about = "Apply configured changes")]
     Sync(SyncArgs),
@@ -40,7 +40,7 @@ pub(crate) struct InitArgs {
 }
 
 #[derive(Args, Debug)]
-pub(crate) struct PlanArgs {
+pub(crate) struct PreviewArgs {
     #[arg(long)]
     pub(crate) user: bool,
 
@@ -74,10 +74,10 @@ mod tests {
             ["agentcfg", "init"].as_slice(),
             ["agentcfg", "init", "--project"].as_slice(),
             ["agentcfg", "init", "--user"].as_slice(),
-            ["agentcfg", "plan"].as_slice(),
-            ["agentcfg", "plan", "--upgrade"].as_slice(),
-            ["agentcfg", "plan", "--user"].as_slice(),
-            ["agentcfg", "plan", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "preview"].as_slice(),
+            ["agentcfg", "preview", "--upgrade"].as_slice(),
+            ["agentcfg", "preview", "--user"].as_slice(),
+            ["agentcfg", "preview", "--user", "--upgrade"].as_slice(),
             ["agentcfg", "sync"].as_slice(),
             ["agentcfg", "sync", "--upgrade"].as_slice(),
             ["agentcfg", "sync", "--user"].as_slice(),
@@ -103,7 +103,8 @@ mod tests {
             ["agentcfg", "status", "--upgrade"].as_slice(),
             ["agentcfg", "doctor", "--user"].as_slice(),
             ["agentcfg", "doctor", "--upgrade"].as_slice(),
-            ["agentcfg", "plan", "--project"].as_slice(),
+            ["agentcfg", "plan"].as_slice(),
+            ["agentcfg", "preview", "--project"].as_slice(),
             ["agentcfg", "sync", "--project"].as_slice(),
             ["agentcfg", "prune", "--project"].as_slice(),
             ["agentcfg", "status", "--project"].as_slice(),
