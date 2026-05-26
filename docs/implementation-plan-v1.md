@@ -74,7 +74,7 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 #### Task M1.1: Define CLI command surface
 
 - [x] Introduce `clap` for command parsing instead of growing manual argument parsing.
-- [x] Add `init`, `plan`, `sync`, `prune`, `status`, and `doctor`.
+- [x] Add `init`, `preview` (formerly `plan`), `sync`, `prune`, `status`, and `doctor`.
 - [x] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
 - [x] Reject invalid flag combinations through argument parsing where possible.
 - [x] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
@@ -89,7 +89,7 @@ Validation:
 
 ```sh
 cargo test --workspace
-cargo run -p agentcfg-cli -- plan --help
+cargo run -p agentcfg-cli -- preview --help
 ```
 
 #### Task M1.2: Model config layers, install scopes, and paths in core
@@ -152,10 +152,10 @@ Before starting M2, update this implementation plan's downstream milestones so n
 
 #### Task M1.5.0: Rename plan workflow language to preview
 
-- [ ] Rename the user-facing `plan` workflow to `preview`, including CLI command, help text, workflow request/result names, tests, and docs.
-- [ ] Preserve the strict read-only invariant: preview never writes config, lockfiles, manifests, managed state, source locations, or Client Discovery Locations.
-- [ ] Decide whether `plan` remains as a temporary compatibility alias or is removed before V1 release.
-- [ ] Update validation commands and test names that currently use `plan`.
+- [x] Rename the user-facing `plan` workflow to `preview`, including CLI command, help text, workflow request/result names, tests, and docs.
+- [x] Preserve the strict read-only invariant: preview never writes config, lockfiles, manifests, managed state, source locations, or Client Discovery Locations.
+- [x] Decide whether `plan` remains as a temporary compatibility alias or is removed before V1 release. **Decision:** remove `plan` subcommand; no compatibility alias (M1.5.0).
+- [x] Update validation commands and test names that currently use `plan`.
 
 Validation:
 
