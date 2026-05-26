@@ -1,5 +1,5 @@
 use agentcfg_core::workflow::{
-    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PreviewRequest,
+    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallLevel, PreviewRequest,
     ApplyRequest, PruneRequest, SourceResolutionPolicy, StatusRequest,
 };
 
@@ -66,18 +66,18 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
             WorkflowInvocation::Init(InitRequest::new(init_config_layer(args)))
         }
         CliCommand::Preview(args) => WorkflowInvocation::Preview(PreviewRequest::new(
-            install_scope(args.user),
+            install_level(args.user),
             source_resolution_policy(args.upgrade),
         )),
         CliCommand::Apply(args) => WorkflowInvocation::Apply(ApplyRequest::new(
-            install_scope(args.user),
+            install_level(args.user),
             source_resolution_policy(args.upgrade),
         )),
         CliCommand::Prune(args) => {
-            WorkflowInvocation::Prune(PruneRequest::new(install_scope(args.user)))
+            WorkflowInvocation::Prune(PruneRequest::new(install_level(args.user)))
         }
         CliCommand::Status(args) => {
-            WorkflowInvocation::Status(StatusRequest::new(install_scope(args.user)))
+            WorkflowInvocation::Status(StatusRequest::new(install_level(args.user)))
         }
         CliCommand::Doctor => WorkflowInvocation::Doctor(DoctorRequest::new()),
     }
@@ -93,11 +93,11 @@ fn init_config_layer(args: InitArgs) -> ConfigLayer {
     }
 }
 
-fn install_scope(user: bool) -> InstallScope {
+fn install_level(user: bool) -> InstallLevel {
     if user {
-        InstallScope::User
+        InstallLevel::User
     } else {
-        InstallScope::Project
+        InstallLevel::Project
     }
 }
 
@@ -135,14 +135,14 @@ mod tests {
         assert_eq!(
             invocation_for(["agentcfg", "preview"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
-                InstallScope::Project,
+                InstallLevel::Project,
                 SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
             invocation_for(["agentcfg", "preview", "--user", "--upgrade"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
-                InstallScope::User,
+                InstallLevel::User,
                 SourceResolutionPolicy::RefreshSources,
             ))
         );
@@ -153,36 +153,36 @@ mod tests {
         assert_eq!(
             invocation_for(["agentcfg", "apply"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
-                InstallScope::Project,
+                InstallLevel::Project,
                 SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
             invocation_for(["agentcfg", "apply", "--user", "--upgrade"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
-                InstallScope::User,
+                InstallLevel::User,
                 SourceResolutionPolicy::RefreshSources,
             ))
         );
     }
 
     #[test]
-    fn maps_install_scoped_commands_to_workflow_request() {
+    fn maps_install_level_commands_to_workflow_request() {
         assert_eq!(
             invocation_for(["agentcfg", "prune"]),
-            WorkflowInvocation::Prune(PruneRequest::new(InstallScope::Project))
+            WorkflowInvocation::Prune(PruneRequest::new(InstallLevel::Project))
         );
         assert_eq!(
             invocation_for(["agentcfg", "prune", "--user"]),
-            WorkflowInvocation::Prune(PruneRequest::new(InstallScope::User))
+            WorkflowInvocation::Prune(PruneRequest::new(InstallLevel::User))
         );
         assert_eq!(
             invocation_for(["agentcfg", "status"]),
-            WorkflowInvocation::Status(StatusRequest::new(InstallScope::Project))
+            WorkflowInvocation::Status(StatusRequest::new(InstallLevel::Project))
         );
         assert_eq!(
             invocation_for(["agentcfg", "status", "--user"]),
-            WorkflowInvocation::Status(StatusRequest::new(InstallScope::User))
+            WorkflowInvocation::Status(StatusRequest::new(InstallLevel::User))
         );
     }
 
