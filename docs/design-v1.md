@@ -54,8 +54,8 @@ V1 exposes three config layers:
 | Human-facing name | Persisted `scope` value | Core name | Meaning |
 | --- | --- | --- | --- |
 | user config | `user` | `ConfigLayer::User` | Current user's home/config layer. |
-| shared project config | `sharedProject` | `ConfigLayer::SharedProject` | Shared repo-level config. |
-| user project config | `userProject` | `ConfigLayer::UserProject` | Current user's config for one repo. |
+| shared project config | `shared-project` | `ConfigLayer::SharedProject` | Shared repo-level config. |
+| user project config | `user-project` | `ConfigLayer::UserProject` | Current user's config for one repo. |
 
 Active layers by command:
 
@@ -113,7 +113,7 @@ V1 config is skill-specific. Do not expose or implement a generic resource schem
 Example:
 
 ```toml
-scope = "userProject"
+scope = "user-project"
 
 [[skill_sources]]
 id = "personal"
@@ -323,7 +323,7 @@ Consumers should be structured, not just a string list:
 ```json
 "consumers": [
   {"scope": "shared-project", "client": "codex"},
-  {"scope": "userProject", "client": "codex"}
+  {"scope": "user-project", "client": "codex"}
 ]
 ```
 

@@ -324,7 +324,7 @@ clients = ["codex", "claude", "opencode"]
 
     #[test]
     fn parses_valid_shared_project_config() {
-        let config = parse_layer_config(ConfigLayer::SharedProject, "sharedProject");
+        let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
 
         assert_eq!(config.layer(), ConfigLayer::SharedProject);
         assert_eq!(config.sources().len(), 1);
@@ -353,7 +353,7 @@ clients = ["codex", "claude", "opencode"]
 
     #[test]
     fn parses_valid_user_project_config() {
-        let config = parse_layer_config(ConfigLayer::UserProject, "userProject");
+        let config = parse_layer_config(ConfigLayer::UserProject, "user-project");
 
         assert_eq!(config.layer(), ConfigLayer::UserProject);
     }
@@ -380,7 +380,7 @@ clients = ["codex", "claude", "opencode"]
         let error = parse_config_str(
             ConfigLayer::User,
             "user.toml",
-            &config_contents("sharedProject"),
+            &config_contents("shared-project"),
         )
         .unwrap_err();
 
@@ -391,7 +391,7 @@ clients = ["codex", "claude", "opencode"]
                 expected_scope: "user",
                 ref actual_scope,
                 ..
-            }) if actual_scope == "sharedProject"
+            }) if actual_scope == "shared-project"
         ));
     }
 
@@ -589,7 +589,7 @@ clients = ["codex"]
         let paths = ConfigFilePaths::for_shared_project(tempdir.path());
 
         let mut file = fs::File::create(paths.config_file()).unwrap();
-        file.write_all(config_contents("sharedProject").as_bytes())
+        file.write_all(config_contents("shared-project").as_bytes())
             .unwrap();
 
         let config = load_config(paths.layer(), paths.config_file()).unwrap();

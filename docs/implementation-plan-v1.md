@@ -94,7 +94,7 @@ cargo run -p agentcfg-cli -- plan --help
 
 #### Task M1.2: Model config layers, install scopes, and paths in core
 
-- [x] Reuse the shared config layer values introduced in M1.1: `sharedProject`, `userProject`, and `user`.
+- [x] Reuse the shared config layer values introduced in M1.1: `shared-project`, `user-project`, and `user`.
 - [x] Add path resolution for shared project config, user project config, and user config.
 - [x] Add path resolution for adjacent lockfiles.
 - [x] Add generated state path resolution for project and user install scopes.
@@ -111,7 +111,7 @@ cargo test -p agentcfg-core config_paths
 #### Task M1.3: Implement config parsing and validation
 
 - [ ] Add a focused `agentcfg_core::config` module for V1 skill config models, parsing, loading, and validation.
-- [ ] Centralize persisted `ConfigLayer` scope strings (`sharedProject`, `userProject`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
+- [ ] Centralize persisted `ConfigLayer` scope strings (`shared-project`, `user-project`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
 - [ ] Parse V1 TOML config into skill-specific structs.
 - [ ] Validate `scope` against config location.
 - [ ] Validate required `[[skill_sources]].id`.
