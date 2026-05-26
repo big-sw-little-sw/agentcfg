@@ -1,33 +1,33 @@
 use std::path::{Path, PathBuf};
 
-use crate::scope::InstallScope;
+use crate::scope::InstallLevel;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SkillTargetRoot {
     pub(crate) clients: Vec<&'static str>,
-    pub(crate) install_scope: InstallScope,
+    pub(crate) install_level: InstallLevel,
     pub(crate) path: PathBuf,
 }
 
 impl SkillTargetRoot {
-    fn new(clients: Vec<&'static str>, install_scope: InstallScope, path: PathBuf) -> Self {
+    fn new(clients: Vec<&'static str>, install_level: InstallLevel, path: PathBuf) -> Self {
         Self {
             clients,
-            install_scope,
+            install_level,
             path,
         }
     }
 }
 
 pub(crate) fn project_skill_target_roots(project_root: &Path) -> Vec<SkillTargetRoot> {
-    skill_target_roots(project_root, InstallScope::Project)
+    skill_target_roots(project_root, InstallLevel::Project)
 }
 
 pub(crate) fn user_skill_target_roots(home_dir: &Path) -> Vec<SkillTargetRoot> {
-    skill_target_roots(home_dir, InstallScope::User)
+    skill_target_roots(home_dir, InstallLevel::User)
 }
 
-fn skill_target_roots(base: &Path, install_scope: InstallScope) -> Vec<SkillTargetRoot> {
+fn skill_target_roots(base: &Path, install_level: InstallLevel) -> Vec<SkillTargetRoot> {
     let raw_roots = [
         ("codex", base.join(".agents").join("skills")),
         ("pi", base.join(".agents").join("skills")),
@@ -41,11 +41,11 @@ fn skill_target_roots(base: &Path, install_scope: InstallScope) -> Vec<SkillTarg
     for (client, path) in raw_roots {
         if let Some(root) = roots
             .iter_mut()
-            .find(|root| root.install_scope == install_scope && root.path == path)
+            .find(|root| root.install_level == install_level && root.path == path)
         {
             root.clients.push(client);
         } else {
-            roots.push(SkillTargetRoot::new(vec![client], install_scope, path));
+            roots.push(SkillTargetRoot::new(vec![client], install_level, path));
         }
     }
 

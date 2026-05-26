@@ -7,7 +7,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::scope::{ConfigLayer, InstallScope};
+use crate::scope::{ConfigLayer, InstallLevel};
 use crate::{PathEnvironmentError, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,7 +63,7 @@ impl ConfigFilePaths {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeneratedStatePaths {
-    install_scope: InstallScope,
+    install_level: InstallLevel,
     manifest: PathBuf,
     managed_sources_root: PathBuf,
 }
@@ -73,7 +73,7 @@ impl GeneratedStatePaths {
         let agentcfg_dir = project_root.as_ref().join(".agentcfg");
 
         Self {
-            install_scope: InstallScope::Project,
+            install_level: InstallLevel::Project,
             manifest: agentcfg_dir.join("manifest.json"),
             managed_sources_root: agentcfg_dir.join("sources"),
         }
@@ -83,14 +83,14 @@ impl GeneratedStatePaths {
         let agentcfg_dir = state_home.as_ref().join("agentcfg");
 
         Self {
-            install_scope: InstallScope::User,
+            install_level: InstallLevel::User,
             manifest: agentcfg_dir.join("manifest.json"),
             managed_sources_root: agentcfg_dir.join("sources"),
         }
     }
 
-    pub fn install_scope(&self) -> InstallScope {
-        self.install_scope
+    pub fn install_level(&self) -> InstallLevel {
+        self.install_level
     }
 
     pub fn manifest(&self) -> &Path {
@@ -270,7 +270,7 @@ mod tests {
     fn project_generated_state_uses_project_agentcfg_dir() {
         let paths = GeneratedStatePaths::for_project("/repo");
 
-        assert_eq!(paths.install_scope(), InstallScope::Project);
+        assert_eq!(paths.install_level(), InstallLevel::Project);
         assert_eq!(paths.manifest(), Path::new("/repo/.agentcfg/manifest.json"));
         assert_eq!(
             paths.managed_sources_root(),
@@ -282,7 +282,7 @@ mod tests {
     fn user_generated_state_uses_state_home_without_requiring_config_home() {
         let paths = GeneratedStatePaths::for_user_state_home("/home/me/.local/state");
 
-        assert_eq!(paths.install_scope(), InstallScope::User);
+        assert_eq!(paths.install_level(), InstallLevel::User);
         assert_eq!(
             paths.manifest(),
             Path::new("/home/me/.local/state/agentcfg/manifest.json")
