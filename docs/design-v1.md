@@ -63,15 +63,15 @@ Active layers by command:
 | --- | --- | --- |
 | `agentcfg preview` | shared project config, then user project config | project |
 | `agentcfg preview --upgrade` | shared project config, then user project config | project |
-| `agentcfg sync` | shared project config, then user project config | project |
-| `agentcfg sync --upgrade` | shared project config, then user project config | project |
+| `agentcfg apply` | shared project config, then user project config | project |
+| `agentcfg apply --upgrade` | shared project config, then user project config | project |
 | `agentcfg prune` | manifest consumers for project targets | project |
 | `agentcfg status` | shared project config, user project config, project manifest | project |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
 | `agentcfg preview --user` | user config only | user |
 | `agentcfg preview --user --upgrade` | user config only | user |
-| `agentcfg sync --user` | user config only | user |
-| `agentcfg sync --user --upgrade` | user config only | user |
+| `agentcfg apply --user` | user config only | user |
+| `agentcfg apply --user --upgrade` | user config only | user |
 | `agentcfg prune --user` | stale consumers and artifacts in user targets | user |
 | `agentcfg status --user` | user config and user manifest | user |
 
@@ -147,7 +147,7 @@ Rules:
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
-- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `sync` writes any new target.
+- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new target.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
 - CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
@@ -206,16 +206,16 @@ Source acquisition mode:
 Managed materialized tree:
 
 ```text
-project sync: .agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
-user sync:    ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
+project apply: .agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
+user apply:    ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
 ```
 
 The exact path format can change during implementation, but it must be stable enough for manifests and diagnostics. The managed tree is the canonical installed content for copied sources.
 
 Why managed source trees are required:
 
-- Plain `sync` can reinstall the locked skill version without rereading a mutable path source or floating git ref.
-- `sync --upgrade` materializes a new managed tree, updates the lockfile, and retargets client symlinks to the new tree.
+- Plain `apply` can reinstall the locked skill version without rereading a mutable path source or floating git ref.
+- `apply --upgrade` materializes a new managed tree, updates the lockfile, and retargets client symlinks to the new tree.
 - Old managed trees can remain as cache until no lockfile or manifest target uses them, then `prune` may remove them.
 
 Installed target mode:
@@ -230,7 +230,7 @@ For copied sources:
 source -> managed materialized tree -> client target symlink
 ```
 
-Client target symlinks must point to the managed materialized tree for the same sync scope:
+Client target symlinks must point to the managed materialized tree for the same apply scope:
 
 - project targets point into project generated state under `.agentcfg/sources/`
 - user targets point into user generated state under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
@@ -240,15 +240,15 @@ Expected symlink target validation:
 - Manifest records the expected target for each symlinked client artifact.
 - `status` reports missing links, broken targets, and unexpected symlink targets.
 - `prune` refuses to remove a symlink whose current target does not match the manifest.
-- `sync` may update a manifest-owned symlink when the previous target matches the manifest and the desired target changed.
+- `apply` may update a manifest-owned symlink when the previous target matches the manifest and the desired target changed.
 
-Sync direction is one-way:
+Apply direction is one-way:
 
 ```text
 source -> managed source tree -> client target
 ```
 
-`agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --upgrade` to preview the import and `agentcfg sync --upgrade` to materialize it into managed state.
+`agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --upgrade` to preview the import and `agentcfg apply --upgrade` to materialize it into managed state.
 
 ## Lockfiles
 
@@ -275,18 +275,18 @@ The lockfile records exact resolved inputs:
 
 Floating git refs are allowed in config, but lockfiles record concrete commits. Examples of floating refs include `main`, `trunk`, `develop`, and `release/2026-05`; a pinned commit SHA is not floating.
 
-Plain `sync` uses the existing lockfile when present. `sync --upgrade` refreshes source resolutions and rewrites active lockfiles.
+Plain `apply` uses the existing lockfile when present. `apply --upgrade` refreshes source resolutions and rewrites active lockfiles.
 
 For path sources:
 
-- Plain `sync` should install from the locked managed copy if available.
-- If the lockfile exists but the managed source tree is missing, plain `sync` recreates it from the current source only when the current source materializes to the locked `source_hash`.
-- If the current source is unavailable, plain `sync` must fail and ask the user to restore the source or managed state.
-- If the current source is available but no longer matches the locked `source_hash`, plain `sync` must fail and tell the user to run `agentcfg sync --upgrade` only if they want to accept the changed source content.
-- Current path source edits do not affect plain `sync` while the locked managed source tree exists.
-- `preview --upgrade` and `sync --upgrade` detect and use changed path source content.
+- Plain `apply` should install from the locked managed copy if available.
+- If the lockfile exists but the managed source tree is missing, plain `apply` recreates it from the current source only when the current source materializes to the locked `source_hash`.
+- If the current source is unavailable, plain `apply` must fail and ask the user to restore the source or managed state.
+- If the current source is available but no longer matches the locked `source_hash`, plain `apply` must fail and tell the user to run `agentcfg apply --upgrade` only if they want to accept the changed source content.
+- Current path source edits do not affect plain `apply` while the locked managed source tree exists.
+- `preview --upgrade` and `apply --upgrade` detect and use changed path source content.
 
-For git sources, plain `sync` installs from the locked managed copy. If that copy is missing, `sync` may recreate it from the locked commit. If the locked commit cannot be fetched, `sync` must fail and ask the user to restore managed state or make the locked commit available; `sync --upgrade` is only appropriate when the user wants to move to a newer resolved commit.
+For git sources, plain `apply` installs from the locked managed copy. If that copy is missing, `apply` may recreate it from the locked commit. If the locked commit cannot be fetched, `apply` must fail and ask the user to restore managed state or make the locked commit available; `apply --upgrade` is only appropriate when the user wants to move to a newer resolved commit.
 
 ## Manifest
 
@@ -410,7 +410,7 @@ Alias behavior:
 - Patch the managed copy's `SKILL.md` frontmatter `name`, when present.
 - Do not mutate the upstream source.
 - Emit alias rewrites in `preview`.
-- Summarize alias rewrites in `sync`.
+- Summarize alias rewrites in `apply`.
 
 Implementation invariant:
 
@@ -494,7 +494,7 @@ Reason: these are not portable skill content and may hang, expose system resourc
 - create `.agentcfg/` when needed
 - detect and report existing unmanaged client artifacts
 - not adopt, overwrite, or delete existing artifacts
-- not write target client directories; `sync` does that
+- not write target client directories; `apply` does that
 
 Existing client target artifacts during init are unmanaged:
 
@@ -539,7 +539,7 @@ Keep implementation design skill-first. The planner/apply boundary is the import
 resolve resource-specific desired state -> desired target artifacts -> build plan -> render plan OR apply plan
 ```
 
-`preview` and `sync` should share the same planner.
+`preview` and `apply` should share the same planner.
 
 V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired target artifacts:
 
@@ -575,7 +575,7 @@ The `agentcfg-core` crate owns the reusable skill-management engine:
 - safe materialization and hashing
 - lockfile and manifest models
 - desired-state planning
-- sync, prune, status, and doctor operations
+- apply, prune, status, and doctor operations
 - built-in client target registry
 - filesystem safety invariants
 
@@ -601,24 +601,24 @@ These are intentionally deferred decisions. They are not V1 commitments, but V1 
 
 ### Resource-specific CLI selectors
 
-The default command meaning should be aggregate desired-state sync:
+The default command meaning should be aggregate desired-state apply:
 
 ```text
-agentcfg sync = sync all configured resource types for the selected scope
+agentcfg apply = apply all configured resource types for the selected scope
 ```
 
-In V1, skills are the only configured resource type, so `agentcfg sync` only installs skills as a consequence of the V1 resource set. Do not define the command's meaning as "sync skills"; that would make adding MCP or other resources later a semantic change.
+In V1, skills are the only configured resource type, so `agentcfg apply` only installs skills as a consequence of the V1 resource set. Do not define the command's meaning as "apply skills"; that would make adding MCP or other resources later a semantic change.
 
 Possible future narrowing commands:
 
 ```text
 agentcfg preview skills
-agentcfg sync skills
+agentcfg apply skills
 agentcfg status skills
 agentcfg prune skills
 
 agentcfg preview mcp
-agentcfg sync mcp
+agentcfg apply mcp
 agentcfg status mcp
 ```
 

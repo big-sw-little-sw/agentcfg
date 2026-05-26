@@ -74,7 +74,7 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 #### Task M1.1: Define CLI command surface
 
 - [x] Introduce `clap` for command parsing instead of growing manual argument parsing.
-- [x] Add `init`, `preview` (formerly `plan`), `sync`, `prune`, `status`, and `doctor`.
+- [x] Add `init`, `preview` (formerly `plan`), `apply` (formerly `sync`), `prune`, `status`, and `doctor`.
 - [x] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
 - [x] Reject invalid flag combinations through argument parsing where possible.
 - [x] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
@@ -165,10 +165,10 @@ cargo test --workspace preview
 
 #### Task M1.5.1: Rename sync workflow language to apply
 
-- [ ] Rename the user-facing `sync` workflow to `apply`, including CLI command, help text, workflow request/result names, tests, and docs.
-- [ ] Decide whether `sync` remains as a temporary compatibility alias or is removed before V1 release.
-- [ ] Preserve the one-way invariant: apply writes managed state and Client Discovery Locations, never source locations.
-- [ ] Update validation commands and test names that currently use `sync`.
+- [x] Rename the user-facing `sync` workflow to `apply`, including CLI command, help text, workflow request/result names, tests, and docs.
+- [x] Decide whether `sync` remains as a temporary compatibility alias or is removed before V1 release. **Decision:** remove `sync` subcommand; no compatibility alias (M1.5.1).
+- [x] Preserve the one-way invariant: apply writes managed state and Client Discovery Locations, never source locations.
+- [x] Update validation commands and test names that currently use `sync`.
 
 Validation:
 
