@@ -1,9 +1,6 @@
-use std::collections::BTreeMap;
-use std::path::PathBuf;
-
 use agentcfg_core::workflow::{
     self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PlanRequest,
-    PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest, UnmanagedClientArtifact,
+    PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest,
 };
 
 use crate::CliError;
@@ -25,77 +22,31 @@ pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
 fn render_init_result(result: &workflow::InitResult) -> Result<(), CliError> {
     println!("Created config: {}", result.config_file.display());
 
-    for (path, error, clients) in scan_failure_warnings(&result.warnings) {
-        eprintln!(
-            "warning: could not scan client target at {} for {}: {}",
-            path.display(),
-            clients.join(", "),
-            error
-        );
-    }
-
-    for (path, clients) in unmanaged_artifact_warnings(&result.warnings) {
-        eprintln!(
-            "warning: unmanaged skill artifact exists at {} ({})",
-            path.display(),
-            clients.join(", ")
-        );
+    for warning in &result.warnings {
+        render_skill_target_warning(warning);
     }
 
     Ok(())
 }
 
-fn unmanaged_artifact_warnings(warnings: &[InitWarning]) -> Vec<(PathBuf, Vec<&'static str>)> {
-    let mut by_path = BTreeMap::<PathBuf, Vec<&'static str>>::new();
-    for artifact in warnings.iter().filter_map(unmanaged_artifact_warning) {
-        by_path
-            .entry(artifact.path.clone())
-            .or_default()
-            .push(artifact.client);
-    }
-
-    by_path
-        .into_iter()
-        .map(|(path, mut clients)| {
-            clients.sort_unstable();
-            clients.dedup();
-            (path, clients)
-        })
-        .collect()
-}
-
-fn scan_failure_warnings(warnings: &[InitWarning]) -> Vec<(PathBuf, String, Vec<&'static str>)> {
-    let mut by_path_and_error = BTreeMap::<(PathBuf, String), Vec<&'static str>>::new();
-    for scan_failure in warnings.iter().filter_map(scan_failure_warning) {
-        by_path_and_error
-            .entry((scan_failure.path.clone(), scan_failure.error.clone()))
-            .or_default()
-            .push(scan_failure.client);
-    }
-
-    by_path_and_error
-        .into_iter()
-        .map(|((path, error), mut clients)| {
-            clients.sort_unstable();
-            clients.dedup();
-            (path, error, clients)
-        })
-        .collect()
-}
-
-fn unmanaged_artifact_warning(warning: &InitWarning) -> Option<&UnmanagedClientArtifact> {
+fn render_skill_target_warning(warning: &InitWarning) {
     match warning {
-        InitWarning::UnmanagedClientArtifact(artifact) => Some(artifact),
-        _ => None,
-    }
-}
-
-fn scan_failure_warning(
-    warning: &InitWarning,
-) -> Option<&agentcfg_core::workflow::ClientTargetScanFailure> {
-    match warning {
-        InitWarning::ClientTargetScanFailed(scan_failure) => Some(scan_failure),
-        _ => None,
+        InitWarning::TargetReadFailure(read_failure) => {
+            eprintln!(
+                "warning: could not scan client target at {} for {}: {}",
+                read_failure.path.display(),
+                read_failure.clients.join(", "),
+                read_failure.error
+            );
+        }
+        InitWarning::ExistingTargetArtifact(artifact) => {
+            eprintln!(
+                "warning: unmanaged skill artifact exists at {} ({})",
+                artifact.path.display(),
+                artifact.clients.join(", ")
+            );
+        }
+        _ => {}
     }
 }
 

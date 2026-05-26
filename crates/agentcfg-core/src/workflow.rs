@@ -9,9 +9,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::client_targets::{
-    ClientSkillTargetRoot, project_skill_target_roots, user_skill_target_roots,
-};
+use crate::client_targets::{SkillTargetRoot, project_skill_target_roots, user_skill_target_roots};
 use crate::config::parse_config_str;
 use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
 pub use crate::scope::{ConfigLayer, InstallScope};
@@ -45,25 +43,31 @@ pub struct InitResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InitWarning {
-    UnmanagedClientArtifact(UnmanagedClientArtifact),
-    ClientTargetScanFailed(ClientTargetScanFailure),
+    ExistingTargetArtifact(ExistingTargetArtifact),
+    TargetReadFailure(TargetReadFailure),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct UnmanagedClientArtifact {
-    pub client: &'static str,
+pub struct ExistingTargetArtifact {
+    pub clients: Vec<&'static str>,
     pub install_scope: InstallScope,
     pub path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct ClientTargetScanFailure {
-    pub client: &'static str,
+pub struct TargetReadFailure {
+    pub clients: Vec<&'static str>,
     pub install_scope: InstallScope,
     pub path: PathBuf,
     pub error: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct SkillTargetInspection {
+    existing_artifacts: Vec<ExistingTargetArtifact>,
+    read_failures: Vec<TargetReadFailure>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -232,7 +236,10 @@ fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<
 
     Ok(InitResult {
         config_file: config_paths.config_file().to_path_buf(),
-        warnings: scan_init_warnings(request.config_layer, context),
+        warnings: init_warnings_from(inspect_existing_skill_targets(
+            request.config_layer,
+            context,
+        )),
     })
 }
 
@@ -294,41 +301,53 @@ fn create_config_file(path: &Path, layer: ConfigLayer, contents: &str) -> Result
         })
 }
 
-fn scan_init_warnings(layer: ConfigLayer, context: &WorkflowContext) -> Vec<InitWarning> {
+fn inspect_existing_skill_targets(
+    layer: ConfigLayer,
+    context: &WorkflowContext,
+) -> SkillTargetInspection {
     let roots = match layer {
         ConfigLayer::SharedProject | ConfigLayer::UserProject => {
             let Ok(project_root) = discover_project_root(&context.cwd) else {
-                return Vec::new();
+                return SkillTargetInspection::default();
             };
             project_skill_target_roots(&project_root)
         }
         ConfigLayer::User => {
             let Some(home_dir) = context.home_dir() else {
-                return Vec::new();
+                return SkillTargetInspection::default();
             };
             user_skill_target_roots(home_dir)
         }
     };
 
-    let mut warnings = Vec::new();
+    let mut inspection = SkillTargetInspection::default();
     for root in roots {
         match scan_target_root(&root) {
-            Ok(artifacts) => warnings.extend(
-                artifacts
-                    .into_iter()
-                    .map(InitWarning::UnmanagedClientArtifact),
-            ),
-            Err(scan_failure) => warnings.push(InitWarning::ClientTargetScanFailed(scan_failure)),
+            Ok(artifacts) => inspection.existing_artifacts.extend(artifacts),
+            Err(read_failure) => inspection.read_failures.push(read_failure),
         }
     }
 
-    warnings.sort_by(init_warning_cmp_key);
-    warnings
+    inspection
+}
+
+fn init_warnings_from(inspection: SkillTargetInspection) -> Vec<InitWarning> {
+    inspection
+        .read_failures
+        .into_iter()
+        .map(InitWarning::TargetReadFailure)
+        .chain(
+            inspection
+                .existing_artifacts
+                .into_iter()
+                .map(InitWarning::ExistingTargetArtifact),
+        )
+        .collect()
 }
 
 fn scan_target_root(
-    root: &ClientSkillTargetRoot,
-) -> std::result::Result<Vec<UnmanagedClientArtifact>, ClientTargetScanFailure> {
+    root: &SkillTargetRoot,
+) -> std::result::Result<Vec<ExistingTargetArtifact>, TargetReadFailure> {
     match root.path.try_exists() {
         Ok(false) => return Ok(Vec::new()),
         Ok(true) => {}
@@ -341,47 +360,23 @@ fn scan_target_root(
     for entry in entries {
         let entry = entry.map_err(|source| scan_failure(root, source))?;
 
-        artifacts.push(UnmanagedClientArtifact {
-            client: root.client,
+        artifacts.push(ExistingTargetArtifact {
+            clients: root.clients.clone(),
             install_scope: root.install_scope,
             path: entry.path(),
         });
     }
 
-    artifacts.sort_by(|left, right| {
-        left.path
-            .cmp(&right.path)
-            .then(left.client.cmp(right.client))
-    });
+    artifacts.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(artifacts)
 }
 
-fn scan_failure(root: &ClientSkillTargetRoot, source: std::io::Error) -> ClientTargetScanFailure {
-    ClientTargetScanFailure {
-        client: root.client,
+fn scan_failure(root: &SkillTargetRoot, source: std::io::Error) -> TargetReadFailure {
+    TargetReadFailure {
+        clients: root.clients.clone(),
         install_scope: root.install_scope,
         path: root.path.clone(),
         error: source.to_string(),
-    }
-}
-
-fn init_warning_cmp_key(left: &InitWarning, right: &InitWarning) -> std::cmp::Ordering {
-    init_warning_path(left)
-        .cmp(init_warning_path(right))
-        .then(init_warning_client(left).cmp(init_warning_client(right)))
-}
-
-fn init_warning_path(warning: &InitWarning) -> &Path {
-    match warning {
-        InitWarning::UnmanagedClientArtifact(artifact) => &artifact.path,
-        InitWarning::ClientTargetScanFailed(scan_failure) => &scan_failure.path,
-    }
-}
-
-fn init_warning_client(warning: &InitWarning) -> &'static str {
-    match warning {
-        InitWarning::UnmanagedClientArtifact(artifact) => artifact.client,
-        InitWarning::ClientTargetScanFailed(scan_failure) => scan_failure.client,
     }
 }
 
@@ -485,12 +480,18 @@ mod tests {
         let result =
             init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
 
-        let artifacts = unmanaged_artifacts(&result);
-        assert_artifact(&artifacts, "codex", &agents_skill);
-        assert_artifact(&artifacts, "pi", &agents_skill);
-        assert_artifact(&artifacts, "opencode", &agents_skill);
-        assert_artifact(&artifacts, "cursor", &agents_skill);
-        assert_artifact(&artifacts, "claude", &claude_skill);
+        let artifacts = existing_target_artifacts(&result);
+        assert_eq!(
+            artifacts.len(),
+            2,
+            "artifacts were not grouped: {artifacts:?}"
+        );
+        assert_artifact(
+            &artifacts,
+            &["codex", "cursor", "opencode", "pi"],
+            &agents_skill,
+        );
+        assert_artifact(&artifacts, &["claude"], &claude_skill);
         assert_eq!(
             fs::read_to_string(agents_skill.join("SKILL.md")).unwrap(),
             "review"
@@ -533,8 +534,9 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::ClientTargetScanFailed(scan_failure)
-                    if scan_failure.path == agents_skills
+                InitWarning::TargetReadFailure(read_failure)
+                    if read_failure.path == agents_skills
+                        && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
             "missing scan warning in {:?}",
             result.warnings
@@ -563,8 +565,9 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::ClientTargetScanFailed(scan_failure)
-                    if scan_failure.path == agents_skills
+                InitWarning::TargetReadFailure(read_failure)
+                    if read_failure.path == agents_skills
+                        && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
             "missing scan warning in {:?}",
             result.warnings
@@ -587,23 +590,23 @@ mod tests {
         );
     }
 
-    fn unmanaged_artifacts(result: &InitResult) -> Vec<UnmanagedClientArtifact> {
+    fn existing_target_artifacts(result: &InitResult) -> Vec<ExistingTargetArtifact> {
         result
             .warnings
             .iter()
             .filter_map(|warning| match warning {
-                InitWarning::UnmanagedClientArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::ClientTargetScanFailed(_) => None,
+                InitWarning::ExistingTargetArtifact(artifact) => Some(artifact.clone()),
+                InitWarning::TargetReadFailure(_) => None,
             })
             .collect()
     }
 
-    fn assert_artifact(artifacts: &[UnmanagedClientArtifact], client: &'static str, path: &Path) {
+    fn assert_artifact(artifacts: &[ExistingTargetArtifact], clients: &[&str], path: &Path) {
         assert!(
-            artifacts.iter().any(|artifact| artifact.client == client
+            artifacts.iter().any(|artifact| artifact.clients == clients
                 && artifact.install_scope == InstallScope::Project
                 && artifact.path == path),
-            "missing artifact for {client} at {} in {artifacts:?}",
+            "missing artifact for {clients:?} at {} in {artifacts:?}",
             path.display()
         );
     }

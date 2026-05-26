@@ -79,6 +79,7 @@ fn init_reports_unmanaged_artifacts_without_modifying_targets() {
     let stderr = stderr(&output);
     assert!(stderr.contains("warning: unmanaged skill artifact exists"));
     assert!(stderr.contains("review"));
+    assert!(stderr.contains("(codex, cursor, opencode, pi)"));
     assert_eq!(
         fs::read_to_string(skill.join("SKILL.md")).unwrap(),
         "review"
