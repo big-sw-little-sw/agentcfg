@@ -12,3 +12,6 @@ path = "src/main.rs"
 agentcfg-core = { path = "../agentcfg-core" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

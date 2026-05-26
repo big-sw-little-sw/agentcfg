@@ -1,6 +1,6 @@
 use agentcfg_core::workflow::{
-    self, ConfigLayer, DoctorRequest, InitRequest, InstallScope, PlanRequest, PruneRequest,
-    SourceResolutionPolicy, StatusRequest, SyncRequest,
+    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PlanRequest,
+    PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest,
 };
 
 use crate::CliError;
@@ -8,7 +8,7 @@ use crate::args::{Cli, CliCommand, InitArgs};
 
 pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     match workflow_invocation_for(cli.command) {
-        WorkflowInvocation::Init(request) => workflow::init(request).map(|_| ())?,
+        WorkflowInvocation::Init(request) => render_init_result(&workflow::init(request)?)?,
         WorkflowInvocation::Plan(request) => workflow::plan(request).map(|_| ())?,
         WorkflowInvocation::Sync(request) => workflow::sync(request).map(|_| ())?,
         WorkflowInvocation::Prune(request) => workflow::prune(request).map(|_| ())?,
@@ -17,6 +17,37 @@ pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     }
 
     Ok(())
+}
+
+fn render_init_result(result: &workflow::InitResult) -> Result<(), CliError> {
+    println!("Created config: {}", result.config_file.display());
+
+    for warning in &result.warnings {
+        render_skill_target_warning(warning);
+    }
+
+    Ok(())
+}
+
+fn render_skill_target_warning(warning: &InitWarning) {
+    match warning {
+        InitWarning::TargetReadFailure(read_failure) => {
+            eprintln!(
+                "warning: could not scan client target at {} for {}: {}",
+                read_failure.path.display(),
+                read_failure.clients.join(", "),
+                read_failure.error
+            );
+        }
+        InitWarning::ExistingTargetArtifact(artifact) => {
+            eprintln!(
+                "warning: unmanaged skill artifact exists at {} ({})",
+                artifact.path.display(),
+                artifact.clients.join(", ")
+            );
+        }
+        _ => {}
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
