@@ -16,6 +16,9 @@ pub enum Error {
     #[error(transparent)]
     PathEnvironment(#[from] PathEnvironmentError),
 
+    #[error(transparent)]
+    Init(#[from] InitError),
+
     #[error("filesystem error at {path}: {source}")]
     Io {
         path: PathBuf,
@@ -134,6 +137,13 @@ pub enum PathEnvironmentError {
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
+pub enum InitError {
+    #[error("config already exists at {path} for {layer:?}")]
+    ConfigAlreadyExists { path: PathBuf, layer: ConfigLayer },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum UnsupportedError {
     #[error("unsupported feature `{feature}`")]
     Feature { feature: &'static str },
@@ -187,6 +197,21 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "HOME is required to resolve the default for XDG_CONFIG_HOME; set HOME or XDG_CONFIG_HOME"
+        );
+    }
+
+    #[test]
+    fn converts_and_displays_wrapped_init_error() {
+        let error: Error = InitError::ConfigAlreadyExists {
+            path: PathBuf::from(".agentcfg/config.toml"),
+            layer: ConfigLayer::UserProject,
+        }
+        .into();
+
+        assert!(matches!(error, Error::Init(_)));
+        assert_eq!(
+            error.to_string(),
+            "config already exists at .agentcfg/config.toml for UserProject"
         );
     }
 }
