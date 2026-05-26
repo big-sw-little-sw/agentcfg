@@ -110,16 +110,16 @@ cargo test -p agentcfg-core config_paths
 
 #### Task M1.3: Implement config parsing and validation
 
-- [ ] Add a focused `agentcfg_core::config` module for V1 skill config models, parsing, loading, and validation.
-- [ ] Centralize persisted `ConfigLayer` scope strings (`shared-project`, `user-project`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
-- [ ] Parse V1 TOML config into skill-specific structs.
-- [ ] Validate `scope` against config location.
-- [ ] Validate required `[[skill_sources]].id`.
-- [ ] Validate required `[skills].clients`; accept either a non-empty explicit client list or `clients = "all"` for all supported clients.
-- [ ] Keep `exclude` unsupported in V1.
-- [ ] Add structured config validation errors for parse failures, scope mismatch, missing source id, missing clients, and unsupported fields; include enough path/layer/field context for CLI diagnostics without embedding CLI formatting in core.
-- [ ] Expose lower-level config load/parse/validate APIs returning structured config models for the active layer types.
-- [ ] Add tests for persisted scope string mapping, valid shared, user project, and user configs, and validation failures.
+- [x] Add a focused `agentcfg_core::config` module for V1 skill config models, parsing, loading, and validation.
+- [x] Centralize persisted `ConfigLayer` scope strings (`shared-project`, `user-project`, `user`) so parsing, diagnostics, lockfiles, and manifests reuse one contract.
+- [x] Parse V1 TOML config into skill-specific structs.
+- [x] Validate `scope` against config location.
+- [x] Validate required `[[skill_sources]].id`.
+- [x] Validate required `[skills].clients`; accept either a non-empty explicit client list or `clients = "all"` for all supported clients.
+- [x] Keep `exclude` unsupported in V1.
+- [x] Add structured config validation errors for parse failures, scope mismatch, missing source id, missing clients, and unsupported fields; include enough path/layer/field context for CLI diagnostics without embedding CLI formatting in core.
+- [x] Expose lower-level config load/parse/validate APIs returning structured config models for the active layer types.
+- [x] Add tests for persisted scope string mapping, valid shared, user project, and user configs, and validation failures.
 
 Validation:
 
