@@ -144,6 +144,127 @@ Validation:
 cargo test --workspace init
 ```
 
+### M1.5: Ubiquitous Language Alignment
+
+Goal: align command names, core API names, persisted models, and domain docs with the root ubiquitous language document before more preview/apply work lands.
+
+Before starting M2, update this implementation plan's downstream milestones so new work does not copy pre-glossary terms.
+
+#### Task M1.5.0: Rename plan workflow language to preview
+
+- [ ] Rename the user-facing `plan` workflow to `preview`, including CLI command, help text, workflow request/result names, tests, and docs.
+- [ ] Preserve the strict read-only invariant: preview never writes config, lockfiles, manifests, managed state, source locations, or Client Discovery Locations.
+- [ ] Decide whether `plan` remains as a temporary compatibility alias or is removed before V1 release.
+- [ ] Update validation commands and test names that currently use `plan`.
+
+Validation:
+
+```sh
+cargo test --workspace preview
+```
+
+#### Task M1.5.1: Rename sync workflow language to apply
+
+- [ ] Rename the user-facing `sync` workflow to `apply`, including CLI command, help text, workflow request/result names, tests, and docs.
+- [ ] Decide whether `sync` remains as a temporary compatibility alias or is removed before V1 release.
+- [ ] Preserve the one-way invariant: apply writes managed state and Client Discovery Locations, never source locations.
+- [ ] Update validation commands and test names that currently use `sync`.
+
+Validation:
+
+```sh
+cargo test --workspace apply
+```
+
+#### Task M1.5.2: Align config layer and install level language
+
+- [ ] Keep `ConfigLayer` as the core type for `shared-project`, `user-project`, and `user` Config Layers.
+- [ ] Align Active Config Layers wording so Project Level means Shared Project Config then User Project Config, and User Level means User Config only.
+- [ ] Rename `InstallScope` language to Install Level in domain docs, CLI help, workflow APIs, diagnostics, and tests.
+- [ ] Align Project, Project Root, User, Project Level, and User Level wording in path discovery, diagnostics, and CLI help.
+- [ ] Keep persisted `scope = ...` wording distinct as Persisted Scope Value in config parsing and diagnostics.
+- [ ] Avoid override language for V1 Project Level behavior; User Project Config is additive with Shared Project Config.
+- [ ] Update `--user` help to say it selects User Config for `init` and the user Install Level for preview/apply/prune/status.
+
+Validation:
+
+```sh
+cargo test --workspace config_layer install_level
+```
+
+#### Task M1.5.3: Align discovery, artifact, and requirement terms
+
+- [ ] Rename domain docs from client target/target registry language to Client Discovery Location and Client Discovery Registry.
+- [ ] Keep implementation path types only as low-level structures when the name is still useful; do not expose target language in user-facing diagnostics.
+- [ ] Rename Consumer model/docs to Discovery Requirement.
+- [ ] Rename target artifact/user-facing artifact language to Installed Artifact.
+- [ ] Update manifest and planner terminology from consuming `{scope, client}` pairs to Discovery Requirements keyed by Config Layer, Client, and Install Level.
+
+Validation:
+
+```sh
+cargo test --workspace discovery_registry discovery_requirement
+```
+
+#### Task M1.5.4: Align skill source, selection, and managed content terms
+
+- [ ] Rename standard/Agent Skills Standard wording to Agent Skill Format where referring to the `SKILL.md` directory format.
+- [ ] Rename Source/domain-doc wording to Skill Source for V1 skill acquisition.
+- [ ] Keep Source Location out of canonical API/model names until multiple Configured Item kinds prove they share a source-resolution lifecycle.
+- [ ] Rename Managed Source Tree/copy wording to Managed Skill Content, including lockfile, materialization, and status docs.
+- [ ] Rename installed name/runtime identity wording to Discovery Name; keep Source Skill Name for source identity.
+- [ ] Rename alias/installed-name collision wording to Discovery Name Collision.
+- [ ] Align include/group docs with domain-shaped terms: Skill Selection, Included Skill, and Skill Group.
+- [ ] Update alias docs to say Skill Alias changes the Discovery Name and may require Managed Skill Content frontmatter preparation.
+- [ ] Rename upgrade wording to Source Refresh for source-resolution refresh behavior, including CLI flag `--refresh-sources`, workflow APIs, tests, and docs.
+
+Validation:
+
+```sh
+cargo test --workspace skill_source skill_selection discovery_name source_refresh
+```
+
+#### Task M1.5.5: Align desired-state, lockfile, manifest, and managed-state terms
+
+- [ ] Introduce Configured Item as the shared term for item kinds managed by `agentcfg`; keep V1 skill-specific code skill-specific until another kind exists.
+- [ ] Align Desired State and Locked Desired State wording in planner, lockfile, preview, and apply docs.
+- [ ] Align Lockfile wording to record Locked Desired State for Configured Items that need repeatable source resolution.
+- [ ] Align Manifest wording as the ownership state for Installed Artifacts and their Discovery Requirements.
+- [ ] Rename generated/cache/internal-state wording to Managed State where referring to `agentcfg`-owned state used by apply, status, and prune.
+
+Validation:
+
+```sh
+cargo test --workspace desired_state lockfile manifest
+```
+
+#### Task M1.5.6: Align status, prune, and safety terminology
+
+- [ ] Use Unmanaged Artifact for filesystem entries at Client Discovery Locations that are not recorded in the Manifest.
+- [ ] Use Stale Discovery Requirement for Manifest requirements no longer present in Desired State.
+- [ ] Use Unsatisfied Discovery Requirement for Desired State requirements without a valid Installed Artifact.
+- [ ] Use Stale Installed Artifact for Manifest-recorded Installed Artifacts with no remaining Discovery Requirements.
+- [ ] Keep Unexpected Symlink Target and Broken Symlink scoped to filesystem symlink diagnostics, not client-target language.
+- [ ] Preserve Status as managed install-state consistency and Doctor as environment/configuration readiness.
+
+Validation:
+
+```sh
+cargo test --workspace status prune doctor
+```
+
+#### Task M1.5.7: Update downstream milestone wording
+
+- [ ] Update M2 and later milestones in this plan to use the root ubiquitous language document before implementing those milestones.
+- [ ] Replace pre-glossary terms in downstream task names, checklists, validation commands, and acceptance notes.
+- [ ] Keep implementation-only names only where the task explicitly calls out a low-level structure that intentionally differs from domain language.
+
+Validation:
+
+```sh
+rg "sync|plan|upgrade|InstallScope|Consumer|installed name|target registry|Managed Source Tree" docs/implementation-plan-v1.md
+```
+
 ### M2: Path Sources and Skill Selection
 
 Goal: resolve selected skills from local path sources without writing managed state.
