@@ -8,5 +8,7 @@ fn invalid_command_form_exits_two() {
         .expect("failed to run agentcfg");
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(!output.stderr.is_empty());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.is_empty());
+    assert!(!stderr.contains("usage error: error:"));
 }

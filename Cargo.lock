@@ -7,7 +7,6 @@ name = "agentcfg-cli"
 version = "0.1.0"
 dependencies = [
  "agentcfg-core",
- "anyhow",
  "clap",
  "tempfile",
 ]

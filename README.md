@@ -8,6 +8,17 @@ It is designed to consume skills from filesystem or git sources, resolve them in
 
 Early implementation stage. The repository contains the V1 PRD and design notes, plus the initial Cargo workspace, CLI command surface, and core workflow stubs.
 
+## Development
+
+This workspace uses **Rust edition 2024**. Install the toolchain pinned in `rust-toolchain.toml` (currently Rust 1.85.0) before building:
+
+```sh
+rustup show active-toolchain   # should match rust-toolchain.toml
+cargo test --workspace
+```
+
+Git skill sources are specified in the PRD but are implemented in a later milestone; see `docs/implementation-plan-v1.md`.
+
 ## Goals
 
 - Keep the skill manager separate from skill repositories.

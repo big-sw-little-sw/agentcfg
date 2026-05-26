@@ -17,6 +17,9 @@ pub enum Error {
     PathEnvironment(#[from] PathEnvironmentError),
 
     #[error(transparent)]
+    PathDiscovery(#[from] PathDiscoveryError),
+
+    #[error(transparent)]
     Init(#[from] InitError),
 
     #[error("filesystem error at {path}: {source}")]
@@ -103,7 +106,7 @@ pub enum ConfigError {
     },
 
     #[error(
-        "unsupported source kind `{kind}` at {path} for {layer:?}; supported source kinds in V1: path; git source support is planned for a later phase"
+        "unsupported source kind `{kind}` at {path} for {layer:?}; supported source kinds in V1: path (git sources are not implemented yet; see docs/implementation-plan-v1.md)"
     )]
     UnsupportedSourceKind {
         path: PathBuf,
@@ -133,6 +136,17 @@ pub enum SourceError {
 pub enum PathEnvironmentError {
     #[error("HOME is required to resolve the default for {xdg_var}; set HOME or {xdg_var}")]
     MissingHomeForXdgFallback { xdg_var: &'static str },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PathDiscoveryError {
+    #[error("could not inspect project root marker at {path}: {source}")]
+    MarkerInspection {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

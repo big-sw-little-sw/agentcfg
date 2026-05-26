@@ -19,7 +19,7 @@ impl ConfigLayer {
         }
     }
 
-    pub fn from_persisted_scope(value: &str) -> Option<Self> {
+    pub(crate) fn from_persisted_scope(value: &str) -> Option<Self> {
         match value {
             "shared-project" => Some(ConfigLayer::SharedProject),
             "user-project" => Some(ConfigLayer::UserProject),

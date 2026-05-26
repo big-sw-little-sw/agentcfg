@@ -1,10 +1,11 @@
-mod client_targets;
+mod error;
 pub mod config;
 pub mod config_paths;
-mod error;
+pub mod registry;
 pub mod scope;
 pub mod workflow;
 
 pub use error::{
-    ConfigError, Error, InitError, PathEnvironmentError, Result, SourceError, UnsupportedError,
+    ConfigError, Error, InitError, PathDiscoveryError, PathEnvironmentError, Result,
+    SourceError, UnsupportedError,
 };

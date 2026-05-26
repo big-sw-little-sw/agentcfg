@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::scope::{ConfigLayer, InstallScope};
-use crate::{PathEnvironmentError, Result};
+use crate::{PathDiscoveryError, PathEnvironmentError, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConfigFilePaths {
@@ -204,25 +204,40 @@ fn missing_home_for_xdg_default(xdg_var: &'static str) -> crate::Error {
 pub fn discover_project_root(start_dir: impl AsRef<Path>) -> Result<PathBuf> {
     let start_dir = start_dir.as_ref();
 
-    let root = ancestors(start_dir)
-        .find(|ancestor| has_git_marker(ancestor))
-        .or_else(|| ancestors(start_dir).find(|ancestor| has_agentcfg_marker(ancestor)))
-        .unwrap_or(start_dir);
+    for ancestor in ancestors(start_dir) {
+        if has_git_marker(ancestor)? {
+            return Ok(ancestor.to_path_buf());
+        }
+    }
 
-    Ok(root.to_path_buf())
+    for ancestor in ancestors(start_dir) {
+        if has_agentcfg_marker(ancestor)? {
+            return Ok(ancestor.to_path_buf());
+        }
+    }
+
+    Ok(start_dir.to_path_buf())
 }
 
 fn ancestors(path: &Path) -> impl Iterator<Item = &Path> {
     std::iter::successors(Some(path), |path| path.parent())
 }
 
-fn has_git_marker(path: &Path) -> bool {
-    fs::metadata(path.join(".git")).is_ok()
+fn has_git_marker(path: &Path) -> Result<bool> {
+    marker_exists(path.join(".git"))
 }
 
-fn has_agentcfg_marker(path: &Path) -> bool {
-    fs::metadata(path.join("agentcfg.toml")).is_ok()
-        || fs::metadata(path.join(".agentcfg").join("config.toml")).is_ok()
+fn has_agentcfg_marker(path: &Path) -> Result<bool> {
+    Ok(marker_exists(path.join("agentcfg.toml"))?
+        || marker_exists(path.join(".agentcfg").join("config.toml"))?)
+}
+
+fn marker_exists(path: PathBuf) -> Result<bool> {
+    match fs::metadata(&path) {
+        Ok(_) => Ok(true),
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(PathDiscoveryError::MarkerInspection { path, source }.into()),
+    }
 }
 
 #[cfg(test)]

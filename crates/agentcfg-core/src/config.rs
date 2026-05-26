@@ -10,8 +10,38 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::registry::normalize_client_id;
 use crate::scope::ConfigLayer;
 use crate::{ConfigError, Error, Result};
+
+struct ValidationContext<'a> {
+    path: &'a Path,
+    layer: ConfigLayer,
+}
+
+impl ValidationContext<'_> {
+    fn path_buf(&self) -> PathBuf {
+        self.path.to_path_buf()
+    }
+
+    fn missing_field(&self, field: &'static str) -> Error {
+        ConfigError::MissingRequiredField {
+            path: self.path_buf(),
+            layer: self.layer,
+            field,
+        }
+        .into()
+    }
+
+    fn empty_field(&self, field: &'static str) -> Error {
+        ConfigError::EmptyRequiredField {
+            path: self.path_buf(),
+            layer: self.layer,
+            field,
+        }
+        .into()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -112,9 +142,22 @@ pub fn load_config(layer: ConfigLayer, path: impl AsRef<Path>) -> Result<Config>
 }
 
 fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<Config> {
-    let scope = raw
-        .scope
-        .ok_or_else(|| missing_field(&path, layer, "scope"))?;
+    let ctx = ValidationContext {
+        path: &path,
+        layer,
+    };
+
+    let scope = raw.scope.ok_or_else(|| ctx.missing_field("scope"))?;
+
+    if ConfigLayer::from_persisted_scope(&scope).is_none() {
+        return Err(ConfigError::InvalidFieldValue {
+            path: ctx.path_buf(),
+            layer: ctx.layer,
+            field: "scope",
+            value: scope,
+        }
+        .into());
+    }
 
     if scope != layer.persisted_scope() {
         return Err(ConfigError::ScopeMismatch {
@@ -126,14 +169,11 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
         .into());
     }
 
-    let sources = validate_sources(&path, layer, raw.skill_sources)?;
-    let skill_aliases = validate_skill_aliases(&path, layer, raw.skill_aliases, &sources)?;
-
+    let sources = validate_sources(&ctx, raw.skill_sources)?;
+    let skill_aliases = validate_skill_aliases(&ctx, raw.skill_aliases, &sources)?;
     let skills = validate_skills(
-        &path,
-        layer,
-        raw.skills
-            .ok_or_else(|| missing_field(&path, layer, "skills"))?,
+        &ctx,
+        raw.skills.ok_or_else(|| ctx.missing_field("skills"))?,
     )?;
 
     Ok(Config {
@@ -145,19 +185,18 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
 }
 
 fn validate_sources(
-    path: &Path,
-    layer: ConfigLayer,
+    ctx: &ValidationContext<'_>,
     raw_sources: Vec<RawSkillSource>,
 ) -> Result<Vec<SkillSourceConfig>> {
     let mut ids = BTreeSet::new();
     let mut sources = Vec::with_capacity(raw_sources.len());
 
     for raw_source in raw_sources {
-        let source = validate_source(path, layer, raw_source)?;
+        let source = validate_source(ctx, raw_source)?;
         if !ids.insert(source.id.clone()) {
             return Err(ConfigError::DuplicateSourceId {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 source_id: source.id,
             }
             .into());
@@ -169,23 +208,22 @@ fn validate_sources(
 }
 
 fn validate_source(
-    path: &Path,
-    layer: ConfigLayer,
+    ctx: &ValidationContext<'_>,
     raw: RawSkillSource,
 ) -> Result<SkillSourceConfig> {
     let id = raw
         .id
-        .ok_or_else(|| missing_field(path, layer, "skill_sources[].id"))?;
+        .ok_or_else(|| ctx.missing_field("skill_sources[].id"))?;
     let id = id.trim().to_string();
 
     if id.is_empty() {
-        return Err(empty_field(path, layer, "skill_sources[].id"));
+        return Err(ctx.empty_field("skill_sources[].id"));
     }
 
     if raw.exclude.is_some() {
         return Err(ConfigError::UnsupportedField {
-            path: path.to_path_buf(),
-            layer,
+            path: ctx.path_buf(),
+            layer: ctx.layer,
             field: "skill_sources[].exclude",
         }
         .into());
@@ -193,19 +231,28 @@ fn validate_source(
 
     let kind = raw
         .kind
-        .ok_or_else(|| missing_field(path, layer, "skill_sources[].type"))?;
+        .ok_or_else(|| ctx.missing_field("skill_sources[].type"))?;
 
     let source = match kind.as_str() {
         "path" => {
             let source_path = raw
                 .path
-                .ok_or_else(|| missing_field(path, layer, "skill_sources[].path"))?;
+                .ok_or_else(|| ctx.missing_field("skill_sources[].path"))?;
             SkillSourceKind::Path { path: source_path }
+        }
+        "git" => {
+            return Err(ConfigError::UnsupportedSourceKind {
+                path: ctx.path_buf(),
+                layer: ctx.layer,
+                source_id: Some(id),
+                kind,
+            }
+            .into());
         }
         _ => {
             return Err(ConfigError::UnsupportedSourceKind {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 source_id: Some(id),
                 kind,
             }
@@ -213,8 +260,9 @@ fn validate_source(
         }
     };
 
-    let include = validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
-    let groups = validate_optional_list(path, layer, "skill_sources[].groups", raw.groups)?;
+    let include =
+        validate_optional_list(ctx, "skill_sources[].include", raw.include)?;
+    let groups = validate_optional_list(ctx, "skill_sources[].groups", raw.groups)?;
 
     Ok(SkillSourceConfig {
         id,
@@ -225,21 +273,35 @@ fn validate_source(
 }
 
 fn validate_optional_list(
-    path: &Path,
-    layer: ConfigLayer,
+    ctx: &ValidationContext<'_>,
     field: &'static str,
     value: Option<Vec<String>>,
 ) -> Result<Vec<String>> {
     match value {
-        Some(values) if values.is_empty() => Err(empty_field(path, layer, field)),
-        Some(values) => Ok(values),
         None => Ok(Vec::new()),
+        Some(values) if values.is_empty() => Err(ctx.empty_field(field)),
+        Some(values) => validate_non_empty_list_elements(ctx, field, values),
     }
 }
 
+fn validate_non_empty_list_elements(
+    ctx: &ValidationContext<'_>,
+    field: &'static str,
+    values: Vec<String>,
+) -> Result<Vec<String>> {
+    let mut normalized = Vec::with_capacity(values.len());
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(ctx.empty_field(field));
+        }
+        normalized.push(trimmed.to_string());
+    }
+    Ok(normalized)
+}
+
 fn validate_skill_aliases(
-    path: &Path,
-    layer: ConfigLayer,
+    ctx: &ValidationContext<'_>,
     raw_aliases: BTreeMap<String, String>,
     sources: &[SkillSourceConfig],
 ) -> Result<BTreeMap<String, String>> {
@@ -251,8 +313,8 @@ fn validate_skill_aliases(
     for (source_skill, installed_name) in &raw_aliases {
         let Some((source_id, skill_name)) = source_skill.split_once(':') else {
             return Err(ConfigError::InvalidAliasKey {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 alias_key: source_skill.clone(),
             }
             .into());
@@ -260,72 +322,93 @@ fn validate_skill_aliases(
 
         if source_id.trim().is_empty() || skill_name.trim().is_empty() {
             return Err(ConfigError::InvalidAliasKey {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 alias_key: source_skill.clone(),
             }
             .into());
         }
 
-        if !source_ids.contains(source_id) {
+        if !source_ids.contains(source_id.trim()) {
             return Err(ConfigError::UnknownAliasSource {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 alias_key: source_skill.clone(),
-                source_id: source_id.to_string(),
+                source_id: source_id.trim().to_string(),
             }
             .into());
         }
 
         if installed_name.trim().is_empty() {
-            return Err(empty_field(path, layer, "skill_aliases[]"));
+            return Err(ctx.empty_field("skill_aliases[]"));
         }
     }
 
     Ok(raw_aliases)
 }
 
-fn validate_skills(path: &Path, layer: ConfigLayer, raw: RawSkills) -> Result<SkillsConfig> {
+fn validate_skills(ctx: &ValidationContext<'_>, raw: RawSkills) -> Result<SkillsConfig> {
     let clients = raw
         .clients
-        .ok_or_else(|| missing_field(path, layer, "skills.clients"))?;
+        .ok_or_else(|| ctx.missing_field("skills.clients"))?;
 
     let clients = match clients {
-        RawClientSelection::String(value) if value == "all" => ClientSelection::AllSupported,
+        RawClientSelection::String(value) if value.trim() == "all" => {
+            ClientSelection::AllSupported
+        }
         RawClientSelection::String(value) => {
             return Err(ConfigError::InvalidFieldValue {
-                path: path.to_path_buf(),
-                layer,
+                path: ctx.path_buf(),
+                layer: ctx.layer,
                 field: "skills.clients",
                 value,
             }
             .into());
         }
         RawClientSelection::List(clients) if clients.is_empty() => {
-            return Err(empty_field(path, layer, "skills.clients"));
+            return Err(ctx.empty_field("skills.clients"));
         }
-        RawClientSelection::List(clients) => ClientSelection::Explicit(clients),
+        RawClientSelection::List(clients) => {
+            let clients = validate_non_empty_list_elements(ctx, "skills.clients", clients)?;
+            ClientSelection::Explicit(validate_client_ids(ctx, clients)?)
+        }
     };
 
     Ok(SkillsConfig { clients })
 }
 
-fn missing_field(path: &Path, layer: ConfigLayer, field: &'static str) -> Error {
-    ConfigError::MissingRequiredField {
-        path: path.to_path_buf(),
-        layer,
-        field,
-    }
-    .into()
-}
+fn validate_client_ids(
+    ctx: &ValidationContext<'_>,
+    clients: Vec<String>,
+) -> Result<Vec<String>> {
+    let mut seen = BTreeSet::new();
+    let mut normalized = Vec::with_capacity(clients.len());
 
-fn empty_field(path: &Path, layer: ConfigLayer, field: &'static str) -> Error {
-    ConfigError::EmptyRequiredField {
-        path: path.to_path_buf(),
-        layer,
-        field,
+    for client in clients {
+        let Some(client_id) = normalize_client_id(&client) else {
+            return Err(ConfigError::InvalidFieldValue {
+                path: ctx.path_buf(),
+                layer: ctx.layer,
+                field: "skills.clients",
+                value: client,
+            }
+            .into());
+        };
+
+        if !seen.insert(client_id) {
+            return Err(ConfigError::InvalidFieldValue {
+                path: ctx.path_buf(),
+                layer: ctx.layer,
+                field: "skills.clients",
+                value: format!("duplicate client `{client_id}`"),
+            }
+            .into());
+        }
+
+        normalized.push(client_id.to_string());
     }
-    .into()
+
+    Ok(normalized)
 }
 
 #[derive(Debug, Deserialize)]
@@ -778,11 +861,143 @@ clients = ["codex"]
                 ..
             }) if source_id == "personal" && kind == "git"
         ));
-        assert!(
-            error
-                .to_string()
-                .contains("git source support is planned for a later phase")
-        );
+        assert!(error.to_string().contains("git sources are not implemented yet"));
+    }
+
+    #[test]
+    fn rejects_unknown_scope_value() {
+        let error = parse_config_str(ConfigLayer::User, "user.toml", &config_contents("bogus"))
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "scope",
+                value,
+                ..
+            }) if value == "bogus"
+        ));
+    }
+
+    #[test]
+    fn rejects_unknown_client_id() {
+        let contents = r#"
+scope = "user"
+
+[skills]
+clients = ["not-a-client"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "skills.clients",
+                value,
+                ..
+            }) if value == "not-a-client"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_clients_string() {
+        let contents = r#"
+scope = "user"
+
+[skills]
+clients = "bogus"
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "skills.clients",
+                value,
+                ..
+            }) if value == "bogus"
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_include_entry() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+include = [""]
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert_empty_field(error, "skill_sources[].include");
+    }
+
+    #[test]
+    fn accepts_alias_source_id_with_surrounding_whitespace() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[skill_aliases]
+" personal:legacy-review" = "code-review"
+
+[skills]
+clients = ["codex"]
+"#;
+
+        parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap();
+    }
+
+    #[test]
+    fn rejects_unknown_top_level_field() {
+        let contents = r#"
+scope = "user"
+unknown = true
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_client_ids() {
+        let contents = r#"
+scope = "user"
+
+[skills]
+clients = ["codex", "codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "skills.clients",
+                ..
+            })
+        ));
+        assert!(error.to_string().contains("duplicate client"));
     }
 
     #[test]

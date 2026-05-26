@@ -1,229 +1,34 @@
-//! User workflow entrypoints for the CLI and future frontends.
-//!
-//! These functions are orchestration boundaries, not the lower-level
-//! config, planning, apply, status, or diagnostic APIs. Those focused APIs
-//! should be added when they are needed by implemented behavior.
-
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::client_targets::{SkillTargetRoot, project_skill_target_roots, user_skill_target_roots};
 use crate::config::parse_config_str;
-use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
-pub use crate::scope::{ConfigLayer, InstallScope};
+use crate::config_paths::{ConfigFilePaths, discover_project_root};
+use crate::registry::{SkillTargetRoot, project_skill_target_roots, user_skill_target_roots};
+use crate::scope::ConfigLayer;
+use crate::workflow::context::WorkflowContext;
+use crate::workflow::types::{
+    ExistingTargetArtifact, InitRequest, InitResult, InitWarning, IoErrorSummary,
+    ProjectRootDiscoveryFailed, TargetReadFailure,
+};
 use crate::{Error, InitError, Result};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SourceResolutionPolicy {
-    UseLocked,
-    RefreshSources,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitRequest {
-    pub config_layer: ConfigLayer,
-}
-
-impl InitRequest {
-    pub fn new(config_layer: ConfigLayer) -> Self {
-        Self { config_layer }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitResult {
-    pub config_file: PathBuf,
-    pub warnings: Vec<InitWarning>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum InitWarning {
-    ExistingTargetArtifact(ExistingTargetArtifact),
-    TargetReadFailure(TargetReadFailure),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ExistingTargetArtifact {
-    pub clients: Vec<&'static str>,
-    pub install_scope: InstallScope,
-    pub path: PathBuf,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct TargetReadFailure {
-    pub clients: Vec<&'static str>,
-    pub install_scope: InstallScope,
-    pub path: PathBuf,
-    pub error: String,
-}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct SkillTargetInspection {
     existing_artifacts: Vec<ExistingTargetArtifact>,
     read_failures: Vec<TargetReadFailure>,
+    discovery_failures: Vec<ProjectRootDiscoveryFailed>,
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PlanRequest {
-    pub install_scope: InstallScope,
-    pub source_resolution: SourceResolutionPolicy,
-}
-
-impl PlanRequest {
-    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
-        Self {
-            install_scope,
-            source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PlanResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct SyncRequest {
-    pub install_scope: InstallScope,
-    pub source_resolution: SourceResolutionPolicy,
-}
-
-impl SyncRequest {
-    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
-        Self {
-            install_scope,
-            source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct SyncResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneRequest {
-    pub install_scope: InstallScope,
-}
-
-impl PruneRequest {
-    pub fn new(install_scope: InstallScope) -> Self {
-        Self { install_scope }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusRequest {
-    pub install_scope: InstallScope,
-}
-
-impl StatusRequest {
-    pub fn new(install_scope: InstallScope) -> Self {
-        Self { install_scope }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusResult {}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorRequest {}
-
-impl DoctorRequest {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorResult {}
 
 pub fn init(request: InitRequest) -> Result<InitResult> {
     let context = WorkflowContext::from_process()?;
     init_with_context(request, &context)
 }
 
-pub fn plan(_request: PlanRequest) -> Result<PlanResult> {
-    Ok(PlanResult {})
-}
-
-pub fn sync(_request: SyncRequest) -> Result<SyncResult> {
-    Ok(SyncResult {})
-}
-
-pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
-    Ok(PruneResult {})
-}
-
-pub fn status(_request: StatusRequest) -> Result<StatusResult> {
-    Ok(StatusResult {})
-}
-
-pub fn doctor(_request: DoctorRequest) -> Result<DoctorResult> {
-    Ok(DoctorResult {})
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct WorkflowContext {
-    cwd: PathBuf,
-    xdg_config_home: Option<PathBuf>,
-    home_dir: Option<PathBuf>,
-}
-
-impl WorkflowContext {
-    fn from_process() -> Result<Self> {
-        let cwd = env::current_dir().map_err(|source| Error::Io {
-            path: PathBuf::from("."),
-            source,
-        })?;
-
-        Ok(Self::new(
-            cwd,
-            env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
-            env::var_os("HOME").map(PathBuf::from),
-        ))
-    }
-
-    fn new(
-        cwd: impl Into<PathBuf>,
-        xdg_config_home: Option<impl Into<PathBuf>>,
-        home_dir: Option<impl Into<PathBuf>>,
-    ) -> Self {
-        Self {
-            cwd: cwd.into(),
-            xdg_config_home: xdg_config_home.map(Into::into),
-            home_dir: home_dir.map(Into::into),
-        }
-    }
-
-    fn user_config_home(&self) -> Result<PathBuf> {
-        UserDirs::config_home_from_env_vars(self.xdg_config_home.clone(), self.home_dir.clone())
-    }
-
-    fn home_dir(&self) -> Option<&Path> {
-        self.home_dir.as_deref()
-    }
-}
-
-fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<InitResult> {
+pub(crate) fn init_with_context(
+    request: InitRequest,
+    context: &WorkflowContext,
+) -> Result<InitResult> {
     let config_paths = init_config_paths(request.config_layer, context)?;
     let contents = starter_config_contents(request.config_layer);
 
@@ -245,13 +50,13 @@ fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<
 
 fn init_config_paths(layer: ConfigLayer, context: &WorkflowContext) -> Result<ConfigFilePaths> {
     match layer {
-        ConfigLayer::SharedProject => {
+        ConfigLayer::SharedProject | ConfigLayer::UserProject => {
             let project_root = discover_project_root(&context.cwd)?;
-            Ok(ConfigFilePaths::for_shared_project(project_root))
-        }
-        ConfigLayer::UserProject => {
-            let project_root = discover_project_root(&context.cwd)?;
-            Ok(ConfigFilePaths::for_user_project(project_root))
+            Ok(match layer {
+                ConfigLayer::SharedProject => ConfigFilePaths::for_shared_project(project_root),
+                ConfigLayer::UserProject => ConfigFilePaths::for_user_project(project_root),
+                ConfigLayer::User => unreachable!(),
+            })
         }
         ConfigLayer::User => Ok(ConfigFilePaths::for_user_config_home(
             context.user_config_home()?,
@@ -305,22 +110,29 @@ fn inspect_existing_skill_targets(
     layer: ConfigLayer,
     context: &WorkflowContext,
 ) -> SkillTargetInspection {
+    let mut inspection = SkillTargetInspection::default();
+
     let roots = match layer {
         ConfigLayer::SharedProject | ConfigLayer::UserProject => {
-            let Ok(project_root) = discover_project_root(&context.cwd) else {
-                return SkillTargetInspection::default();
-            };
-            project_skill_target_roots(&project_root)
+            match discover_project_root(&context.cwd) {
+                Ok(project_root) => project_skill_target_roots(&project_root),
+                Err(error) => {
+                    inspection.discovery_failures.push(ProjectRootDiscoveryFailed {
+                        start_dir: context.cwd.clone(),
+                        error: io_error_summary(error),
+                    });
+                    return inspection;
+                }
+            }
         }
         ConfigLayer::User => {
             let Some(home_dir) = context.home_dir() else {
-                return SkillTargetInspection::default();
+                return inspection;
             };
             user_skill_target_roots(home_dir)
         }
     };
 
-    let mut inspection = SkillTargetInspection::default();
     for root in roots {
         match scan_target_root(&root) {
             Ok(artifacts) => inspection.existing_artifacts.extend(artifacts),
@@ -333,9 +145,15 @@ fn inspect_existing_skill_targets(
 
 fn init_warnings_from(inspection: SkillTargetInspection) -> Vec<InitWarning> {
     inspection
-        .read_failures
+        .discovery_failures
         .into_iter()
-        .map(InitWarning::TargetReadFailure)
+        .map(InitWarning::ProjectRootDiscoveryFailed)
+        .chain(
+            inspection
+                .read_failures
+                .into_iter()
+                .map(InitWarning::TargetReadFailure),
+        )
         .chain(
             inspection
                 .existing_artifacts
@@ -359,11 +177,20 @@ fn scan_target_root(
     let mut artifacts = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|source| scan_failure(root, source))?;
+        let file_type = entry.file_type().map_err(|source| scan_failure(root, source))?;
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let skill_dir = entry.path();
+        if !skill_dir.join("SKILL.md").is_file() {
+            continue;
+        }
 
         artifacts.push(ExistingTargetArtifact {
             clients: root.clients.clone(),
             install_scope: root.install_scope,
-            path: entry.path(),
+            path: skill_dir,
         });
     }
 
@@ -376,7 +203,20 @@ fn scan_failure(root: &SkillTargetRoot, source: std::io::Error) -> TargetReadFai
         clients: root.clients.clone(),
         install_scope: root.install_scope,
         path: root.path.clone(),
-        error: source.to_string(),
+        error: source.into(),
+    }
+}
+
+fn io_error_summary(error: Error) -> IoErrorSummary {
+    match error {
+        Error::Io { source, .. } => source.into(),
+        Error::PathDiscovery(path_discovery) => match path_discovery {
+            crate::PathDiscoveryError::MarkerInspection { source, .. } => source.into(),
+        },
+        other => IoErrorSummary {
+            kind: std::io::ErrorKind::Other,
+            message: other.to_string(),
+        },
     }
 }
 
@@ -384,6 +224,8 @@ fn scan_failure(root: &SkillTargetRoot, source: std::io::Error) -> TargetReadFai
 mod tests {
     use super::*;
     use crate::config::parse_config_str;
+    use crate::scope::InstallScope;
+    use std::path::PathBuf;
 
     #[test]
     fn starter_configs_parse_for_all_layers() {
@@ -475,6 +317,7 @@ mod tests {
         fs::create_dir_all(&agents_skill).unwrap();
         fs::create_dir_all(&claude_skill).unwrap();
         fs::write(agents_skill.join("SKILL.md"), "review").unwrap();
+        fs::write(claude_skill.join("SKILL.md"), "docs").unwrap();
         let context = context_for_project(temp.path());
 
         let result =
@@ -497,6 +340,21 @@ mod tests {
             "review"
         );
         assert!(!temp.path().join(".cline").exists());
+    }
+
+    #[test]
+    fn non_skill_directories_are_not_reported_as_unmanaged_artifacts() {
+        let temp = tempfile::tempdir().unwrap();
+        let agents_skills = temp.path().join(".agents").join("skills");
+        let stray_file = agents_skills.join(".gitkeep");
+        fs::create_dir_all(&agents_skills).unwrap();
+        fs::write(stray_file, "").unwrap();
+        let context = context_for_project(temp.path());
+
+        let result =
+            init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
+
+        assert!(existing_target_artifacts(&result).is_empty());
     }
 
     #[test]
@@ -596,7 +454,9 @@ mod tests {
             .iter()
             .filter_map(|warning| match warning {
                 InitWarning::ExistingTargetArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::TargetReadFailure(_) => None,
+                InitWarning::TargetReadFailure(_) | InitWarning::ProjectRootDiscoveryFailed(_) => {
+                    None
+                }
             })
             .collect()
     }

@@ -1,14 +1,17 @@
 use agentcfg_core::workflow::{
-    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PlanRequest,
-    PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest,
+    self, ConfigLayer, DoctorRequest, InitRequest, InstallScope, PlanRequest, PruneRequest,
+    SourceResolutionPolicy, StatusRequest, SyncRequest,
 };
 
+use crate::args::{Cli, CliCommand, ClientScopeArgs, InitArgs, WorkflowScopeArgs};
+use crate::render;
 use crate::CliError;
-use crate::args::{Cli, CliCommand, InitArgs};
 
 pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     match workflow_invocation_for(cli.command) {
-        WorkflowInvocation::Init(request) => render_init_result(&workflow::init(request)?)?,
+        WorkflowInvocation::Init(request) => {
+            render::render_init_result(&workflow::init(request)?)?
+        }
         WorkflowInvocation::Plan(request) => workflow::plan(request).map(|_| ())?,
         WorkflowInvocation::Sync(request) => workflow::sync(request).map(|_| ())?,
         WorkflowInvocation::Prune(request) => workflow::prune(request).map(|_| ())?,
@@ -17,37 +20,6 @@ pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     }
 
     Ok(())
-}
-
-fn render_init_result(result: &workflow::InitResult) -> Result<(), CliError> {
-    println!("Created config: {}", result.config_file.display());
-
-    for warning in &result.warnings {
-        render_skill_target_warning(warning);
-    }
-
-    Ok(())
-}
-
-fn render_skill_target_warning(warning: &InitWarning) {
-    match warning {
-        InitWarning::TargetReadFailure(read_failure) => {
-            eprintln!(
-                "warning: could not scan client target at {} for {}: {}",
-                read_failure.path.display(),
-                read_failure.clients.join(", "),
-                read_failure.error
-            );
-        }
-        InitWarning::ExistingTargetArtifact(artifact) => {
-            eprintln!(
-                "warning: unmanaged skill artifact exists at {} ({})",
-                artifact.path.display(),
-                artifact.clients.join(", ")
-            );
-        }
-        _ => {}
-    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -65,22 +37,42 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
         CliCommand::Init(args) => {
             WorkflowInvocation::Init(InitRequest::new(init_config_layer(args)))
         }
-        CliCommand::Plan(args) => WorkflowInvocation::Plan(PlanRequest::new(
-            install_scope(args.user),
-            source_resolution_policy(args.upgrade),
-        )),
-        CliCommand::Sync(args) => WorkflowInvocation::Sync(SyncRequest::new(
-            install_scope(args.user),
-            source_resolution_policy(args.upgrade),
-        )),
-        CliCommand::Prune(args) => {
-            WorkflowInvocation::Prune(PruneRequest::new(install_scope(args.user)))
-        }
-        CliCommand::Status(args) => {
-            WorkflowInvocation::Status(StatusRequest::new(install_scope(args.user)))
-        }
+        CliCommand::Plan(args) => WorkflowInvocation::Plan(plan_request(args)),
+        CliCommand::Sync(args) => WorkflowInvocation::Sync(sync_request(args)),
+        CliCommand::Prune(args) => WorkflowInvocation::Prune(prune_request(args)),
+        CliCommand::Status(args) => WorkflowInvocation::Status(status_request(args)),
         CliCommand::Doctor => WorkflowInvocation::Doctor(DoctorRequest::new()),
     }
+}
+
+fn plan_request(args: WorkflowScopeArgs) -> PlanRequest {
+    let mut request = PlanRequest::new(
+        install_scope(args.user),
+        source_resolution_policy(args.upgrade),
+    );
+    request.clients = args.clients;
+    request
+}
+
+fn sync_request(args: WorkflowScopeArgs) -> SyncRequest {
+    let mut request = SyncRequest::new(
+        install_scope(args.user),
+        source_resolution_policy(args.upgrade),
+    );
+    request.clients = args.clients;
+    request
+}
+
+fn prune_request(args: ClientScopeArgs) -> PruneRequest {
+    let mut request = PruneRequest::new(install_scope(args.user));
+    request.clients = args.clients;
+    request
+}
+
+fn status_request(args: ClientScopeArgs) -> StatusRequest {
+    let mut request = StatusRequest::new(install_scope(args.user));
+    request.clients = args.clients;
+    request
 }
 
 fn init_config_layer(args: InitArgs) -> ConfigLayer {
@@ -145,6 +137,17 @@ mod tests {
                 InstallScope::User,
                 SourceResolutionPolicy::RefreshSources,
             ))
+        );
+        assert_eq!(
+            invocation_for(["agentcfg", "plan", "--client", "codex", "--client", "claude"]),
+            WorkflowInvocation::Plan({
+                let mut request = PlanRequest::new(
+                    InstallScope::Project,
+                    SourceResolutionPolicy::UseLocked,
+                );
+                request.clients = vec!["codex".to_string(), "claude".to_string()];
+                request
+            })
         );
     }
 

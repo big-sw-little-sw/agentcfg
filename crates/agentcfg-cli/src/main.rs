@@ -5,12 +5,16 @@ use clap::error::ErrorKind;
 
 mod args;
 mod commands;
+mod error;
+mod render;
+
+use error::CliError;
 
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            let _ = error.print();
             error.exit_code()
         }
     }
@@ -33,52 +37,10 @@ fn parse_cli() -> Result<Option<args::Cli>, CliError> {
                 ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
             ) =>
         {
-            error
-                .print()
-                .map_err(|error| CliError::Unexpected(anyhow::Error::from(error)))?;
+            error.print().map_err(CliError::Unexpected)?;
             Ok(None)
         }
         Err(error) => Err(CliError::from(error)),
-    }
-}
-
-#[derive(Debug)]
-pub enum CliError {
-    Core(agentcfg_core::Error),
-    Usage { message: String },
-    Unexpected(anyhow::Error),
-}
-
-impl CliError {
-    pub fn exit_code(&self) -> ExitCode {
-        match self {
-            CliError::Core(_) | CliError::Unexpected(_) => ExitCode::from(1),
-            CliError::Usage { .. } => ExitCode::from(2),
-        }
-    }
-}
-
-impl std::fmt::Display for CliError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CliError::Core(error) => write!(f, "error: {error}"),
-            CliError::Usage { message } => write!(f, "usage error: {message}"),
-            CliError::Unexpected(error) => write!(f, "error: {error}"),
-        }
-    }
-}
-
-impl From<agentcfg_core::Error> for CliError {
-    fn from(error: agentcfg_core::Error) -> Self {
-        Self::Core(error)
-    }
-}
-
-impl From<clap::Error> for CliError {
-    fn from(error: clap::Error) -> Self {
-        Self::Usage {
-            message: error.to_string(),
-        }
     }
 }
 
@@ -102,9 +64,10 @@ mod tests {
 
     #[test]
     fn usage_errors_exit_two() {
-        let error = CliError::Usage {
-            message: "unknown option `--bogus`".to_string(),
-        };
+        let error = CliError::Usage(clap::Error::raw(
+            clap::error::ErrorKind::UnknownArgument,
+            "unknown option `--bogus`",
+        ));
 
         assert_eq!(error.exit_code(), ExitCode::from(2));
     }
@@ -114,13 +77,13 @@ mod tests {
         let error = args::Cli::try_parse_from(["agentcfg", "doctor", "--user"]).unwrap_err();
         let cli_error = CliError::from(error);
 
-        assert!(matches!(cli_error, CliError::Usage { .. }));
+        assert!(matches!(cli_error, CliError::Usage(_)));
         assert_eq!(cli_error.exit_code(), ExitCode::from(2));
     }
 
     #[test]
     fn unexpected_errors_exit_one() {
-        let error = CliError::Unexpected(anyhow::anyhow!("failed to write output"));
+        let error = CliError::Unexpected(std::io::Error::other("failed to write output"));
 
         assert_eq!(error.exit_code(), ExitCode::from(1));
     }
