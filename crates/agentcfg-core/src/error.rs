@@ -73,6 +73,25 @@ pub enum ConfigError {
         source_id: String,
     },
 
+    #[error(
+        "invalid skill alias key `{alias_key}` at {path} for {layer:?}; expected `source_id:skill_name`"
+    )]
+    InvalidAliasKey {
+        path: PathBuf,
+        layer: ConfigLayer,
+        alias_key: String,
+    },
+
+    #[error(
+        "skill alias `{alias_key}` references unknown source id `{source_id}` at {path} for {layer:?}"
+    )]
+    UnknownAliasSource {
+        path: PathBuf,
+        layer: ConfigLayer,
+        alias_key: String,
+        source_id: String,
+    },
+
     #[error("unsupported config field `{field}` at {path} for {layer:?}")]
     UnsupportedField {
         path: PathBuf,

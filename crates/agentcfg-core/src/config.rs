@@ -127,6 +127,7 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
     }
 
     let sources = validate_sources(&path, layer, raw.skill_sources)?;
+    let skill_aliases = validate_skill_aliases(&path, layer, raw.skill_aliases, &sources)?;
 
     let skills = validate_skills(
         &path,
@@ -138,7 +139,7 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
     Ok(Config {
         layer,
         sources,
-        skill_aliases: raw.skill_aliases,
+        skill_aliases,
         skills,
     })
 }
@@ -212,12 +213,76 @@ fn validate_source(
         }
     };
 
+    let include = validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
+    let groups = validate_optional_list(path, layer, "skill_sources[].groups", raw.groups)?;
+
     Ok(SkillSourceConfig {
         id,
         source,
-        include: raw.include,
-        groups: raw.groups,
+        include,
+        groups,
     })
+}
+
+fn validate_optional_list(
+    path: &Path,
+    layer: ConfigLayer,
+    field: &'static str,
+    value: Option<Vec<String>>,
+) -> Result<Vec<String>> {
+    match value {
+        Some(values) if values.is_empty() => Err(empty_field(path, layer, field)),
+        Some(values) => Ok(values),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn validate_skill_aliases(
+    path: &Path,
+    layer: ConfigLayer,
+    raw_aliases: BTreeMap<String, String>,
+    sources: &[SkillSourceConfig],
+) -> Result<BTreeMap<String, String>> {
+    let source_ids = sources
+        .iter()
+        .map(|source| source.id())
+        .collect::<BTreeSet<_>>();
+
+    for (source_skill, installed_name) in &raw_aliases {
+        let Some((source_id, skill_name)) = source_skill.split_once(':') else {
+            return Err(ConfigError::InvalidAliasKey {
+                path: path.to_path_buf(),
+                layer,
+                alias_key: source_skill.clone(),
+            }
+            .into());
+        };
+
+        if source_id.trim().is_empty() || skill_name.trim().is_empty() {
+            return Err(ConfigError::InvalidAliasKey {
+                path: path.to_path_buf(),
+                layer,
+                alias_key: source_skill.clone(),
+            }
+            .into());
+        }
+
+        if !source_ids.contains(source_id) {
+            return Err(ConfigError::UnknownAliasSource {
+                path: path.to_path_buf(),
+                layer,
+                alias_key: source_skill.clone(),
+                source_id: source_id.to_string(),
+            }
+            .into());
+        }
+
+        if installed_name.trim().is_empty() {
+            return Err(empty_field(path, layer, "skill_aliases[]"));
+        }
+    }
+
+    Ok(raw_aliases)
 }
 
 fn validate_skills(path: &Path, layer: ConfigLayer, raw: RawSkills) -> Result<SkillsConfig> {
@@ -281,10 +346,8 @@ struct RawSkillSource {
     #[serde(rename = "type")]
     kind: Option<String>,
     path: Option<PathBuf>,
-    #[serde(default)]
-    include: Vec<String>,
-    #[serde(default)]
-    groups: Vec<String>,
+    include: Option<Vec<String>>,
+    groups: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
 }
 
@@ -467,6 +530,145 @@ clients = ["codex"]
                 ..
             }) if source_id == "personal"
         ));
+    }
+
+    #[test]
+    fn parses_omitted_source_selection_as_empty_lists() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let config = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap();
+
+        assert!(config.sources()[0].include().is_empty());
+        assert!(config.sources()[0].groups().is_empty());
+    }
+
+    #[test]
+    fn rejects_explicit_empty_source_include() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+include = []
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert_empty_field(error, "skill_sources[].include");
+    }
+
+    #[test]
+    fn rejects_explicit_empty_source_groups() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+groups = []
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert_empty_field(error, "skill_sources[].groups");
+    }
+
+    #[test]
+    fn rejects_malformed_skill_alias_key() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[skill_aliases]
+"legacy-review" = "code-review"
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidAliasKey {
+                alias_key,
+                ..
+            }) if alias_key == "legacy-review"
+        ));
+    }
+
+    #[test]
+    fn rejects_skill_alias_for_unknown_source() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[skill_aliases]
+"community:legacy-review" = "code-review"
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::UnknownAliasSource {
+                alias_key,
+                source_id,
+                ..
+            }) if alias_key == "community:legacy-review" && source_id == "community"
+        ));
+    }
+
+    #[test]
+    fn rejects_empty_skill_alias_target() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[skill_aliases]
+"personal:legacy-review" = ""
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert_empty_field(error, "skill_aliases[]");
     }
 
     #[test]
