@@ -4,13 +4,12 @@
 //! models so workflow and source-resolution code do not need to inspect raw
 //! config tables.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::config_paths::ConfigFilePaths;
 use crate::scope::ConfigLayer;
 use crate::{ConfigError, Error, Result};
 
@@ -102,14 +101,14 @@ pub fn parse_config_str(
     validate_config(layer, path, raw)
 }
 
-pub fn load_config(paths: &ConfigFilePaths) -> Result<Config> {
-    let path = paths.config_file();
+pub fn load_config(layer: ConfigLayer, path: impl AsRef<Path>) -> Result<Config> {
+    let path = path.as_ref();
     let contents = fs::read_to_string(path).map_err(|source| Error::Io {
         path: path.to_path_buf(),
         source,
     })?;
 
-    parse_config_str(paths.layer(), path, &contents)
+    parse_config_str(layer, path, &contents)
 }
 
 fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<Config> {
@@ -127,11 +126,7 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
         .into());
     }
 
-    let sources = raw
-        .skill_sources
-        .into_iter()
-        .map(|source| validate_source(&path, layer, source))
-        .collect::<Result<Vec<_>>>()?;
+    let sources = validate_sources(&path, layer, raw.skill_sources)?;
 
     let skills = validate_skills(
         &path,
@@ -146,6 +141,30 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
         skill_aliases: raw.skill_aliases,
         skills,
     })
+}
+
+fn validate_sources(
+    path: &Path,
+    layer: ConfigLayer,
+    raw_sources: Vec<RawSkillSource>,
+) -> Result<Vec<SkillSourceConfig>> {
+    let mut ids = BTreeSet::new();
+    let mut sources = Vec::with_capacity(raw_sources.len());
+
+    for raw_source in raw_sources {
+        let source = validate_source(path, layer, raw_source)?;
+        if !ids.insert(source.id.clone()) {
+            return Err(ConfigError::DuplicateSourceId {
+                path: path.to_path_buf(),
+                layer,
+                source_id: source.id,
+            }
+            .into());
+        }
+        sources.push(source);
+    }
+
+    Ok(sources)
 }
 
 fn validate_source(
@@ -285,6 +304,7 @@ enum RawClientSelection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config_paths::ConfigFilePaths;
     use std::io::Write;
 
     const VALID_SOURCE: &str = r#"
@@ -420,6 +440,36 @@ clients = ["codex"]
     }
 
     #[test]
+    fn rejects_duplicate_source_ids_after_trimming() {
+        let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+
+[[skill_sources]]
+id = " personal "
+type = "path"
+path = "../other-skills"
+
+[skills]
+clients = ["codex"]
+"#;
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::DuplicateSourceId {
+                source_id,
+                ..
+            }) if source_id == "personal"
+        ));
+    }
+
+    #[test]
     fn rejects_missing_skills_table() {
         let contents = r#"
 scope = "user"
@@ -519,13 +569,18 @@ clients = ["codex"]
         let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
 
         assert!(matches!(
-            error,
+            &error,
             Error::Config(ConfigError::UnsupportedSourceKind {
-                source_id: Some(ref source_id),
-                ref kind,
+                source_id: Some(source_id),
+                kind,
                 ..
             }) if source_id == "personal" && kind == "git"
         ));
+        assert!(
+            error
+                .to_string()
+                .contains("git source support is planned for a later phase")
+        );
     }
 
     #[test]
@@ -537,7 +592,7 @@ clients = ["codex"]
         file.write_all(config_contents("sharedProject").as_bytes())
             .unwrap();
 
-        let config = load_config(&paths).unwrap();
+        let config = load_config(paths.layer(), paths.config_file()).unwrap();
 
         assert_eq!(config.layer(), ConfigLayer::SharedProject);
         assert_eq!(config.sources()[0].id(), "personal");

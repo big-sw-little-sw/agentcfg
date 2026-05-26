@@ -66,6 +66,13 @@ pub enum ConfigError {
         field: &'static str,
     },
 
+    #[error("duplicate source id `{source_id}` at {path} for {layer:?}")]
+    DuplicateSourceId {
+        path: PathBuf,
+        layer: ConfigLayer,
+        source_id: String,
+    },
+
     #[error("unsupported config field `{field}` at {path} for {layer:?}")]
     UnsupportedField {
         path: PathBuf,
@@ -73,7 +80,9 @@ pub enum ConfigError {
         field: &'static str,
     },
 
-    #[error("unsupported source kind `{kind}` at {path} for {layer:?}")]
+    #[error(
+        "unsupported source kind `{kind}` at {path} for {layer:?}; supported source kinds in V1: path; git source support is planned for a later phase"
+    )]
     UnsupportedSourceKind {
         path: PathBuf,
         layer: ConfigLayer,

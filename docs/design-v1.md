@@ -322,7 +322,7 @@ Consumers should be structured, not just a string list:
 
 ```json
 "consumers": [
-  {"scope": "project", "client": "codex"},
+  {"scope": "shared-project", "client": "codex"},
   {"scope": "userProject", "client": "codex"}
 ]
 ```
