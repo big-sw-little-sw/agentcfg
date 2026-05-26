@@ -129,14 +129,14 @@ cargo test -p agentcfg-core config
 
 #### Task M1.4: Implement `init` file creation
 
-- [ ] Introduce an internal workflow execution context or `init_with_context` helper so cwd, user dirs, project-root discovery, and filesystem effects are injectable in tests and not read ad hoc inside public workflow entrypoints.
-- [ ] Create the correct config file for default, `--project`, and `--user`.
-- [ ] Create `.agentcfg/` only when needed.
-- [ ] Do not write client target directories.
-- [ ] Refuse to overwrite existing config files.
-- [ ] Report existing unmanaged client artifacts without adopting them.
-- [ ] Implement `init` as a core workflow that composes config path APIs with conservative file creation.
-- [ ] Add CLI/core tests for each init mode.
+- [x] Introduce an internal workflow execution context or `init_with_context` helper so cwd, user dirs, project-root discovery, and filesystem effects are injectable in tests and not read ad hoc inside public workflow entrypoints.
+- [x] Create the correct config file for default, `--project`, and `--user`.
+- [x] Create `.agentcfg/` only when needed.
+- [x] Do not write client target directories.
+- [x] Refuse to overwrite existing config files.
+- [x] Report existing unmanaged client artifacts without adopting them.
+- [x] Implement `init` as a core workflow that composes config path APIs with conservative file creation.
+- [x] Add CLI/core tests for each init mode.
 
 Validation:
 
