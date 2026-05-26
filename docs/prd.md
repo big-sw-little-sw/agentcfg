@@ -14,7 +14,7 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - Consume skills from filesystem path and git sources.
 - Keep skills in the standard `SKILL.md` directory format.
 - Support repeatable `preview` and `apply` behavior.
-- Support shared project, user project, and user configuration scopes.
+- Support Shared Project Config, User Project Config, and User Config layers.
 - Preserve manifest-owned cleanup safety.
 - Prefer portable skill paths where agent clients officially support them.
 - Avoid imposing committed agent config on teams unless explicitly requested.
@@ -34,10 +34,10 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Target**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
 - **Source**: a filesystem path or git location containing skill directories.
 - **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Targets point to this tree so normal apply can install the locked version without depending on a mutable source path or moving git branch.
-- **Config layer**: one active config file participating in preview or apply, such as shared project config or user project config.
-- **Install scope**: whether a command installs or inspects project-level targets or user-level targets.
+- **Config layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
+- **Install level**: whether a command installs or inspects at Project Level or User Level.
 - **Consumer**: a `{scope, client}` pair recorded in the manifest to say which config/client consumes an installed target artifact. A shared target can be pruned only when it has no remaining consumers.
-- **Client selector**: an optional CLI filter that narrows an install-scoped command to one or more configured clients.
+- **Client selector**: an optional CLI filter that narrows a command at a given Install Level to one or more configured clients.
 
 ## Config Types
 
@@ -93,7 +93,7 @@ Command semantics:
 - `prune`: remove stale managed artifacts and stale consumers. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
-- `--user`: use user config and user targets for `preview`, `apply`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
+- `--user` on `init`: create User Config. `--user` on `preview`, `apply`, `prune`, and `status`: run at User Level (user Install Level) using User Config and user-level targets. Not used for `doctor`, which is diagnostic.
 - `--client <client>`: narrow `preview`, `apply`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
 ## User Workflows

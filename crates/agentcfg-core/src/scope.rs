@@ -1,8 +1,9 @@
-//! Shared selectors for config layers and project-vs-user installation scope.
+//! Shared selectors for Config Layers and Install Level.
 //!
 //! Keep this module limited to stable selector vocabulary. Behavior-specific
 //! policy types belong in the module that owns that behavior.
 
+/// A **Config Layer**: Shared Project Config, User Project Config, or User Config.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigLayer {
     SharedProject,
@@ -11,6 +12,9 @@ pub enum ConfigLayer {
 }
 
 impl ConfigLayer {
+    /// Returns the **Persisted Scope Value** for this layer (`shared-project`, etc.).
+    ///
+    /// This is not the Install Level.
     pub fn persisted_scope(self) -> &'static str {
         match self {
             ConfigLayer::SharedProject => "shared-project",
@@ -19,6 +23,7 @@ impl ConfigLayer {
         }
     }
 
+    /// Parses a **Persisted Scope Value** into a Config Layer.
     pub fn from_persisted_scope(value: &str) -> Option<Self> {
         match value {
             "shared-project" => Some(ConfigLayer::SharedProject),
@@ -29,9 +34,12 @@ impl ConfigLayer {
     }
 }
 
+/// **Install Level**: Project Level vs User Level for preview, apply, prune, and status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InstallScope {
+pub enum InstallLevel {
+    /// Project Level — Shared Project Config and User Project Config are active.
     Project,
+    /// User Level — User Config is the only active Config Layer.
     User,
 }
 

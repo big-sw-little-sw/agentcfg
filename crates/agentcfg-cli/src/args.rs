@@ -20,10 +20,10 @@ pub(crate) enum CliCommand {
     Apply(ApplyArgs),
 
     #[command(about = "Remove stale managed artifacts")]
-    Prune(InstallScopeArgs),
+    Prune(InstallLevelArgs),
 
     #[command(about = "Show managed install state")]
-    Status(InstallScopeArgs),
+    Status(InstallLevelArgs),
 
     #[command(about = "Check local configuration and environment")]
     Doctor,
@@ -35,13 +35,19 @@ pub(crate) struct InitArgs {
     #[arg(long)]
     pub(crate) project: bool,
 
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Select User Config (User Config Layer) instead of the default User Project Config"
+    )]
     pub(crate) user: bool,
 }
 
 #[derive(Args, Debug)]
 pub(crate) struct PreviewArgs {
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Run at User Level (user Install Level) instead of the default Project Level"
+    )]
     pub(crate) user: bool,
 
     #[arg(long)]
@@ -50,7 +56,10 @@ pub(crate) struct PreviewArgs {
 
 #[derive(Args, Debug)]
 pub(crate) struct ApplyArgs {
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Run at User Level (user Install Level) instead of the default Project Level"
+    )]
     pub(crate) user: bool,
 
     #[arg(long)]
@@ -58,8 +67,11 @@ pub(crate) struct ApplyArgs {
 }
 
 #[derive(Args, Debug)]
-pub(crate) struct InstallScopeArgs {
-    #[arg(long)]
+pub(crate) struct InstallLevelArgs {
+    #[arg(
+        long,
+        help = "Run at User Level (user Install Level) instead of the default Project Level"
+    )]
     pub(crate) user: bool,
 }
 

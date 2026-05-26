@@ -81,7 +81,7 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 - [x] Route each command to a small CLI handler that calls a core workflow stub using structured request/result types.
 - [x] Keep workflow APIs namespaced under `agentcfg_core::workflow`; do not root-re-export every stub type before behavior exists.
 - [x] Mark public workflow request/result structs `#[non_exhaustive]` when later fields are plausible; do not mark stable domain enums non-exhaustive without a concrete reason.
-- [x] Introduce shared `ConfigLayer`, `InstallScope`, and `SourceResolutionPolicy` types for later core tasks to reuse.
+- [x] Introduce shared `ConfigLayer`, `InstallLevel`, and `SourceResolutionPolicy` types for later core tasks to reuse.
 - [x] Keep M1.1 workflow stubs thin; do not introduce speculative lower-level planner/apply APIs before real behavior exists.
 - [x] Add CLI snapshot or assertion tests for supported and rejected command forms, including at least one full binary usage-error path.
 
@@ -92,12 +92,12 @@ cargo test --workspace
 cargo run -p agentcfg-cli -- preview --help
 ```
 
-#### Task M1.2: Model config layers, install scopes, and paths in core
+#### Task M1.2: Model config layers, install levels, and paths in core
 
 - [x] Reuse the shared config layer values introduced in M1.1: `shared-project`, `user-project`, and `user`.
 - [x] Add path resolution for shared project config, user project config, and user config.
 - [x] Add path resolution for adjacent lockfiles.
-- [x] Add generated state path resolution for project and user install scopes.
+- [x] Add generated state path resolution for project and user Install Levels.
 - [x] Keep repo-root discovery minimal and local; do not add global org/team discovery.
 - [x] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
 - [x] Add tests using temporary directories and controlled environment variables.
@@ -178,13 +178,13 @@ cargo test --workspace apply
 
 #### Task M1.5.2: Align config layer and install level language
 
-- [ ] Keep `ConfigLayer` as the core type for `shared-project`, `user-project`, and `user` Config Layers.
-- [ ] Align Active Config Layers wording so Project Level means Shared Project Config then User Project Config, and User Level means User Config only.
-- [ ] Rename `InstallScope` language to Install Level in domain docs, CLI help, workflow APIs, diagnostics, and tests.
-- [ ] Align Project, Project Root, User, Project Level, and User Level wording in path discovery, diagnostics, and CLI help.
-- [ ] Keep persisted `scope = ...` wording distinct as Persisted Scope Value in config parsing and diagnostics.
-- [ ] Avoid override language for V1 Project Level behavior; User Project Config is additive with Shared Project Config.
-- [ ] Update `--user` help to say it selects User Config for `init` and the user Install Level for preview/apply/prune/status.
+- [x] Keep `ConfigLayer` as the core type for `shared-project`, `user-project`, and `user` Config Layers.
+- [x] Align Active Config Layers wording so Project Level means Shared Project Config then User Project Config, and User Level means User Config only.
+- [x] Rename `InstallScope` language to Install Level in domain docs, CLI help, workflow APIs, diagnostics, and tests.
+- [x] Align Project, Project Root, User, Project Level, and User Level wording in path discovery, diagnostics, and CLI help.
+- [x] Keep persisted `scope = ...` wording distinct as Persisted Scope Value in config parsing and diagnostics.
+- [x] Avoid override language for V1 Project Level behavior; User Project Config is additive with Shared Project Config.
+- [x] Update `--user` help to say it selects User Config for `init` and the user Install Level for preview/apply/prune/status.
 
 Validation:
 
