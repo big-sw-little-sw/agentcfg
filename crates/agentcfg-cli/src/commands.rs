@@ -1,6 +1,6 @@
 use agentcfg_core::workflow::{
     self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallScope, PreviewRequest,
-    PruneRequest, SourceResolutionPolicy, StatusRequest, SyncRequest,
+    ApplyRequest, PruneRequest, SourceResolutionPolicy, StatusRequest,
 };
 
 use crate::CliError;
@@ -10,7 +10,7 @@ pub(crate) fn handle(cli: Cli) -> Result<(), CliError> {
     match workflow_invocation_for(cli.command) {
         WorkflowInvocation::Init(request) => render_init_result(&workflow::init(request)?)?,
         WorkflowInvocation::Preview(request) => workflow::preview(request).map(|_| ())?,
-        WorkflowInvocation::Sync(request) => workflow::sync(request).map(|_| ())?,
+        WorkflowInvocation::Apply(request) => workflow::apply(request).map(|_| ())?,
         WorkflowInvocation::Prune(request) => workflow::prune(request).map(|_| ())?,
         WorkflowInvocation::Status(request) => workflow::status(request).map(|_| ())?,
         WorkflowInvocation::Doctor(request) => workflow::doctor(request).map(|_| ())?,
@@ -54,7 +54,7 @@ fn render_skill_target_warning(warning: &InitWarning) {
 enum WorkflowInvocation {
     Init(InitRequest),
     Preview(PreviewRequest),
-    Sync(SyncRequest),
+    Apply(ApplyRequest),
     Prune(PruneRequest),
     Status(StatusRequest),
     Doctor(DoctorRequest),
@@ -69,7 +69,7 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
             install_scope(args.user),
             source_resolution_policy(args.upgrade),
         )),
-        CliCommand::Sync(args) => WorkflowInvocation::Sync(SyncRequest::new(
+        CliCommand::Apply(args) => WorkflowInvocation::Apply(ApplyRequest::new(
             install_scope(args.user),
             source_resolution_policy(args.upgrade),
         )),
@@ -149,17 +149,17 @@ mod tests {
     }
 
     #[test]
-    fn maps_sync_forms_to_workflow_request() {
+    fn maps_apply_forms_to_workflow_request() {
         assert_eq!(
-            invocation_for(["agentcfg", "sync"]),
-            WorkflowInvocation::Sync(SyncRequest::new(
+            invocation_for(["agentcfg", "apply"]),
+            WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallScope::Project,
                 SourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
-            invocation_for(["agentcfg", "sync", "--user", "--upgrade"]),
-            WorkflowInvocation::Sync(SyncRequest::new(
+            invocation_for(["agentcfg", "apply", "--user", "--upgrade"]),
+            WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallScope::User,
                 SourceResolutionPolicy::RefreshSources,
             ))

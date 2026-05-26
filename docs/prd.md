@@ -13,7 +13,7 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - Separate the skill manager from skill repositories.
 - Consume skills from filesystem path and git sources.
 - Keep skills in the standard `SKILL.md` directory format.
-- Support repeatable `preview` and `sync` behavior.
+- Support repeatable `preview` and `apply` behavior.
 - Support shared project, user project, and user configuration scopes.
 - Preserve manifest-owned cleanup safety.
 - Prefer portable skill paths where agent clients officially support them.
@@ -33,8 +33,8 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Client**: an agent application or CLI that discovers skills from filesystem paths, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
 - **Target**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
 - **Source**: a filesystem path or git location containing skill directories.
-- **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Targets point to this tree so normal sync can install the locked version without depending on a mutable source path or moving git branch.
-- **Config layer**: one active config file participating in planning or sync, such as shared project config or user project config.
+- **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Targets point to this tree so normal apply can install the locked version without depending on a mutable source path or moving git branch.
+- **Config layer**: one active config file participating in preview or apply, such as shared project config or user project config.
 - **Install scope**: whether a command installs or inspects project-level targets or user-level targets.
 - **Consumer**: a `{scope, client}` pair recorded in the manifest to say which config/client consumes an installed target artifact. A shared target can be pruned only when it has no remaining consumers.
 - **Client selector**: an optional CLI filter that narrows an install-scoped command to one or more configured clients.
@@ -45,9 +45,9 @@ V1 has three user-facing config types:
 
 - **Shared project config**: `agentcfg.toml` at the repo root. This is committed when a repo intentionally wants common agent skills for everyone working in that project. Its lockfile is `agentcfg.lock`.
 - **User project config**: `.agentcfg/config.toml` inside a repo. This is for one user's additions in that specific project and should stay uncommitted with the rest of `.agentcfg/`. Its lockfile is `.agentcfg/lock.toml`.
-- **User config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one user's skills across projects and syncs only to user-level client targets. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
+- **User config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one user's skills across projects and applies only to user-level client targets. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
 
-Project sync reads shared project config plus user project config. User config is synced separately with `agentcfg sync --user`; it is not merged into project sync.
+Project apply reads shared project config plus user project config. User config is applied separately with `agentcfg apply --user`; it is not merged into project apply.
 
 Rationale: agent clients already define how user-level and project-level skills are combined at runtime. `agentcfg` should install user config to user targets and project config to project targets, then let each client apply its own merge and precedence rules. This avoids duplicating user skills into every project and avoids second-guessing client-specific behavior.
 
@@ -66,11 +66,11 @@ agentcfg preview --user
 agentcfg preview --user --upgrade
 agentcfg preview --client <client>
 
-agentcfg sync
-agentcfg sync --upgrade
-agentcfg sync --user
-agentcfg sync --user --upgrade
-agentcfg sync --client <client>
+agentcfg apply
+agentcfg apply --upgrade
+agentcfg apply --user
+agentcfg apply --user --upgrade
+agentcfg apply --client <client>
 
 agentcfg prune
 agentcfg prune --user
@@ -88,13 +88,13 @@ Command semantics:
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or targets.
 - `preview --upgrade`: read-only preview after refreshing source resolutions in memory. For git sources, this means checking whether floating refs moved. For path sources, this means checking whether source content changed.
-- `sync`: create missing lockfiles if needed, then install the locked resolved state.
-- `sync --upgrade`: refresh source resolutions, update active lockfiles, materialize refreshed managed source trees, then install.
+- `apply`: create missing lockfiles if needed, then install the locked resolved state.
+- `apply --upgrade`: refresh source resolutions, update active lockfiles, materialize refreshed managed source trees, then install.
 - `prune`: remove stale managed artifacts and stale consumers. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
-- `--user`: use user config and user targets for `preview`, `sync`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
-- `--client <client>`: narrow `preview`, `sync`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
+- `--user`: use user config and user targets for `preview`, `apply`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
+- `--client <client>`: narrow `preview`, `apply`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
 ## User Workflows
 
@@ -103,7 +103,7 @@ User project setup:
 ```bash
 agentcfg init
 agentcfg preview
-agentcfg sync
+agentcfg apply
 ```
 
 Shared project setup:
@@ -111,7 +111,7 @@ Shared project setup:
 ```bash
 agentcfg init --project
 agentcfg preview
-agentcfg sync
+agentcfg apply
 ```
 
 User-level setup:
@@ -119,14 +119,14 @@ User-level setup:
 ```bash
 agentcfg init --user
 agentcfg preview --user
-agentcfg sync --user
+agentcfg apply --user
 ```
 
 Upgrade selected sources:
 
 ```bash
 agentcfg preview --upgrade
-agentcfg sync --upgrade
+agentcfg apply --upgrade
 ```
 
 Remove stale managed artifacts:
@@ -136,7 +136,7 @@ agentcfg preview
 agentcfg prune
 ```
 
-## Preview, Sync, and Prune
+## Preview, Apply, and Prune
 
 `preview` should show:
 
@@ -150,14 +150,14 @@ agentcfg prune
 - alias rewrites
 - warnings for uncertain client targets
 
-`sync` applies:
+`apply` applies:
 
 - missing lockfile creation
 - target creates
 - target updates
 - consumer additions
 
-`sync` does not remove stale artifacts. If stale artifacts remain, it warns:
+`apply` does not remove stale artifacts. If stale artifacts remain, it warns:
 
 ```text
 Stale managed artifacts remain: N
@@ -223,8 +223,8 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg init --project` creates `agentcfg.toml`.
 - `agentcfg init --user` creates `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `agentcfg preview` is read-only.
-- `agentcfg sync` resolves a path skill source, writes lockfile, materializes managed source, and installs skill symlink.
-- `agentcfg sync --upgrade` refreshes path source content and lockfile.
+- `agentcfg apply` resolves a path skill source, writes lockfile, materializes managed source, and installs skill symlink.
+- `agentcfg apply --upgrade` refreshes path source content and lockfile.
 - `agentcfg prune` removes only manifest-owned stale artifacts.
 - Alias collision handling is tested.
 - Internal symlink materialization and external symlink rejection are tested.

@@ -13,7 +13,7 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 - Keep the skill manager separate from skill repositories.
 - Support standard `SKILL.md` skill directories.
 - Support path and git skill sources.
-- Provide repeatable `preview`, `sync`, and `prune` workflows.
+- Provide repeatable `preview`, `apply`, and `prune` workflows.
 - Manage shared project, user project, and user-level configuration.
 - Install only manifest-owned artifacts and prune conservatively.
 - Prefer portable skill paths where clients support them.
@@ -31,13 +31,13 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 ```sh
 agentcfg init [--project|--user]
 agentcfg preview [--user] [--upgrade]
-agentcfg sync [--user] [--upgrade]
+agentcfg apply [--user] [--upgrade]
 agentcfg prune [--user]
 agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `sync` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
+`preview` is read-only. `apply` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
 
 ## Configuration Layers
 
@@ -45,7 +45,7 @@ agentcfg doctor
 - `.agentcfg/config.toml` / `.agentcfg/lock.toml` for user project configuration.
 - `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml` / `lock.toml` for user configuration.
 
-Project sync reads shared and user project config. User sync is separate and installs only to user-level targets.
+Project apply reads shared and user project config. User apply is separate and installs only to user-level targets.
 
 ## Supported clients planned for V1
 
@@ -66,7 +66,7 @@ V1 separates source acquisition from target installation:
 source -> managed materialized tree -> client target symlink
 ```
 
-This lets normal `sync` reinstall the locked version without depending on mutable path sources or floating git refs, while `sync --upgrade` can refresh source resolutions explicitly.
+This lets normal `apply` reinstall the locked version without depending on mutable path sources or floating git refs, while `apply --upgrade` can refresh source resolutions explicitly.
 
 Cleanup safety rules:
 

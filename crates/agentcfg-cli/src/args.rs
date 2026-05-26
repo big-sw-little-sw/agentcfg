@@ -16,8 +16,8 @@ pub(crate) enum CliCommand {
     #[command(name = "preview", about = "Preview configured changes without writing them")]
     Preview(PreviewArgs),
 
-    #[command(about = "Apply configured changes")]
-    Sync(SyncArgs),
+    #[command(name = "apply", about = "Apply configured changes")]
+    Apply(ApplyArgs),
 
     #[command(about = "Remove stale managed artifacts")]
     Prune(InstallScopeArgs),
@@ -49,7 +49,7 @@ pub(crate) struct PreviewArgs {
 }
 
 #[derive(Args, Debug)]
-pub(crate) struct SyncArgs {
+pub(crate) struct ApplyArgs {
     #[arg(long)]
     pub(crate) user: bool,
 
@@ -78,10 +78,10 @@ mod tests {
             ["agentcfg", "preview", "--upgrade"].as_slice(),
             ["agentcfg", "preview", "--user"].as_slice(),
             ["agentcfg", "preview", "--user", "--upgrade"].as_slice(),
-            ["agentcfg", "sync"].as_slice(),
-            ["agentcfg", "sync", "--upgrade"].as_slice(),
-            ["agentcfg", "sync", "--user"].as_slice(),
-            ["agentcfg", "sync", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "apply"].as_slice(),
+            ["agentcfg", "apply", "--upgrade"].as_slice(),
+            ["agentcfg", "apply", "--user"].as_slice(),
+            ["agentcfg", "apply", "--user", "--upgrade"].as_slice(),
             ["agentcfg", "prune"].as_slice(),
             ["agentcfg", "prune", "--user"].as_slice(),
             ["agentcfg", "status"].as_slice(),
@@ -104,8 +104,9 @@ mod tests {
             ["agentcfg", "doctor", "--user"].as_slice(),
             ["agentcfg", "doctor", "--upgrade"].as_slice(),
             ["agentcfg", "plan"].as_slice(),
+            ["agentcfg", "sync"].as_slice(),
             ["agentcfg", "preview", "--project"].as_slice(),
-            ["agentcfg", "sync", "--project"].as_slice(),
+            ["agentcfg", "apply", "--project"].as_slice(),
             ["agentcfg", "prune", "--project"].as_slice(),
             ["agentcfg", "status", "--project"].as_slice(),
         ] {
