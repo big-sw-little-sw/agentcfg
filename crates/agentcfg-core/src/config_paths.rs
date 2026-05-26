@@ -133,21 +133,20 @@ impl UserDirs {
         let xdg_state_home = absolute_xdg_path(xdg_state_home);
         let home = non_empty_path(home);
 
-        let (config_home, state_home) = match (xdg_config_home, xdg_state_home, home) {
-            (Some(config_home), Some(state_home), _) => (config_home, state_home),
-            (Some(config_home), None, Some(home)) => {
-                (config_home, xdg_default_dir(&home, ".local/state"))
-            }
-            (None, Some(state_home), Some(home)) => (xdg_default_dir(&home, ".config"), state_home),
-            (None, None, Some(home)) => (
-                xdg_default_dir(&home, ".config"),
-                xdg_default_dir(&home, ".local/state"),
-            ),
-            (None, _, None) => return Err(missing_home_for_xdg_default("XDG_CONFIG_HOME")),
-            (_, None, None) => return Err(missing_home_for_xdg_default("XDG_STATE_HOME")),
-        };
-
-        Ok(Self::new(config_home, state_home))
+        Ok(Self::new(
+            xdg_dir_or_home_fallback(
+                xdg_config_home,
+                home.as_deref(),
+                "XDG_CONFIG_HOME",
+                ".config",
+            )?,
+            xdg_dir_or_home_fallback(
+                xdg_state_home,
+                home.as_deref(),
+                "XDG_STATE_HOME",
+                ".local/state",
+            )?,
+        ))
     }
 
     pub fn config_home(&self) -> &Path {
@@ -157,6 +156,32 @@ impl UserDirs {
     pub fn state_home(&self) -> &Path {
         &self.state_home
     }
+
+    pub(crate) fn config_home_from_env_vars(
+        xdg_config_home: Option<impl Into<PathBuf>>,
+        home: Option<impl Into<PathBuf>>,
+    ) -> Result<PathBuf> {
+        xdg_dir_or_home_fallback(
+            absolute_xdg_path(xdg_config_home),
+            non_empty_path(home).as_deref(),
+            "XDG_CONFIG_HOME",
+            ".config",
+        )
+    }
+}
+
+fn xdg_dir_or_home_fallback(
+    xdg_dir: Option<PathBuf>,
+    home: Option<&Path>,
+    xdg_var: &'static str,
+    fallback_suffix: &str,
+) -> Result<PathBuf> {
+    if let Some(xdg_dir) = xdg_dir {
+        return Ok(xdg_dir);
+    }
+
+    home.map(|home| xdg_default_dir(home, fallback_suffix))
+        .ok_or_else(|| missing_home_for_xdg_default(xdg_var))
 }
 
 fn non_empty_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
@@ -326,6 +351,39 @@ mod tests {
     #[test]
     fn user_dirs_report_missing_home_for_config_home_fallback() {
         let error = UserDirs::from_env_vars(None::<&str>, Some("/xdg/state"), None::<&str>)
+            .expect_err("missing home should fail");
+
+        assert!(matches!(
+            error,
+            Error::PathEnvironment(PathEnvironmentError::MissingHomeForXdgFallback {
+                xdg_var: "XDG_CONFIG_HOME"
+            })
+        ));
+    }
+
+    #[test]
+    fn user_config_home_uses_absolute_xdg_config_home() {
+        let config_home =
+            UserDirs::config_home_from_env_vars(Some("/xdg/config"), None::<&str>).unwrap();
+
+        assert_eq!(config_home, Path::new("/xdg/config"));
+    }
+
+    #[test]
+    fn user_config_home_falls_back_to_home_for_missing_or_relative_xdg() {
+        assert_eq!(
+            UserDirs::config_home_from_env_vars(Some("relative/config"), Some("/home/me")).unwrap(),
+            Path::new("/home/me/.config")
+        );
+        assert_eq!(
+            UserDirs::config_home_from_env_vars(None::<&str>, Some("/home/me")).unwrap(),
+            Path::new("/home/me/.config")
+        );
+    }
+
+    #[test]
+    fn user_config_home_reports_missing_home_for_fallback() {
+        let error = UserDirs::config_home_from_env_vars(None::<&str>, None::<&str>)
             .expect_err("missing home should fail");
 
         assert!(matches!(
