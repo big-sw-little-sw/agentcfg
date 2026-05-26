@@ -1,3 +1,4 @@
+pub mod config;
 pub mod config_paths;
 mod error;
 pub mod scope;
