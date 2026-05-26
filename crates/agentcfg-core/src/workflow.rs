@@ -92,12 +92,12 @@ pub struct PreviewResult {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct SyncRequest {
+pub struct ApplyRequest {
     pub install_scope: InstallScope,
     pub source_resolution: SourceResolutionPolicy,
 }
 
-impl SyncRequest {
+impl ApplyRequest {
     pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
             install_scope,
@@ -108,7 +108,7 @@ impl SyncRequest {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct SyncResult {}
+pub struct ApplyResult {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -165,8 +165,8 @@ pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
     Ok(PreviewResult {})
 }
 
-pub fn sync(_request: SyncRequest) -> Result<SyncResult> {
-    Ok(SyncResult {})
+pub fn apply(_request: ApplyRequest) -> Result<ApplyResult> {
+    Ok(ApplyResult {})
 }
 
 pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
