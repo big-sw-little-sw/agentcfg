@@ -47,38 +47,38 @@ ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/
 
 `.agentcfg/` should be ignored by default. `agentcfg.lock` is committed only when a project intentionally adopts shared agent config.
 
-## Config Layers and Install Scopes
+## Config Layers and Install Levels
 
-V1 exposes three config layers:
+V1 exposes three Config Layers:
 
-| Human-facing name | Persisted `scope` value | Core name | Meaning |
+| Config Layer | Persisted Scope Value | Core name | Meaning |
 | --- | --- | --- | --- |
-| user config | `user` | `ConfigLayer::User` | Current user's home/config layer. |
-| shared project config | `shared-project` | `ConfigLayer::SharedProject` | Shared repo-level config. |
-| user project config | `user-project` | `ConfigLayer::UserProject` | Current user's config for one repo. |
+| User Config | `user` | `ConfigLayer::User` | Current user's home/config layer. |
+| Shared Project Config | `shared-project` | `ConfigLayer::SharedProject` | Shared repo-level config. |
+| User Project Config | `user-project` | `ConfigLayer::UserProject` | Current user's config for one repo. |
 
-Active layers by command:
+Active Config Layers by command:
 
-| Command | Active config layers | Install scope |
+| Command | Active Config Layers | Install level |
 | --- | --- | --- |
-| `agentcfg preview` | shared project config, then user project config | project |
-| `agentcfg preview --upgrade` | shared project config, then user project config | project |
-| `agentcfg apply` | shared project config, then user project config | project |
-| `agentcfg apply --upgrade` | shared project config, then user project config | project |
-| `agentcfg prune` | manifest consumers for project targets | project |
-| `agentcfg status` | shared project config, user project config, project manifest | project |
+| `agentcfg preview` | Shared Project Config, then User Project Config | project level |
+| `agentcfg preview --upgrade` | Shared Project Config, then User Project Config | project level |
+| `agentcfg apply` | Shared Project Config, then User Project Config | project level |
+| `agentcfg apply --upgrade` | Shared Project Config, then User Project Config | project level |
+| `agentcfg prune` | manifest consumers for project targets | project level |
+| `agentcfg status` | Shared Project Config, User Project Config, project manifest | project level |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
-| `agentcfg preview --user` | user config only | user |
-| `agentcfg preview --user --upgrade` | user config only | user |
-| `agentcfg apply --user` | user config only | user |
-| `agentcfg apply --user --upgrade` | user config only | user |
-| `agentcfg prune --user` | stale consumers and artifacts in user targets | user |
-| `agentcfg status --user` | user config and user manifest | user |
+| `agentcfg preview --user` | User Config only | user level |
+| `agentcfg preview --user --upgrade` | User Config only | user level |
+| `agentcfg apply --user` | User Config only | user level |
+| `agentcfg apply --user --upgrade` | User Config only | user level |
+| `agentcfg prune --user` | stale consumers and artifacts in user targets | user level |
+| `agentcfg status --user` | User Config and user manifest | user level |
 
 Layer order:
 
 ```text
-shared project config -> user project config
+Shared Project Config -> User Project Config
 ```
 
 User project config is additive by default. It may add sources, selected skills, aliases, and clients for the current user in the current repo. It must not silently replace or weaken shared project config. Explicit override semantics are out of V1.
@@ -98,11 +98,11 @@ Installed names are not namespaced. After alias resolution, installed skill name
 
 Aliases are applied before collision detection.
 
-Client selection is additive across active layers. If shared project config selects `codex` and user project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, install-scoped commands use the full configured client set for the active layers. CLI `--client` may be repeated to narrow that configured client set, but must not add clients outside the configured selection in V1.
+Client selection is additive across active layers. If shared project config selects `codex` and user project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, commands at a given Install Level use the full configured client set for the active Config Layers. CLI `--client` may be repeated to narrow that configured client set, but must not add clients outside the configured selection in V1.
 
 Consumers are tracked by `{scope, client}`. Removing a skill or client from one layer makes that consumer stale. `prune` removes stale consumers and deletes the target artifact only when no consumers remain.
 
-In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallScope` for project-vs-user target installation, and reserve `target` for concrete client target artifacts such as target paths and target modes.
+In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallLevel` for project-vs-user target installation, and reserve `target` for concrete client target artifacts such as target paths and target modes.
 
 Use `SourceResolutionPolicy::{UseLocked, RefreshSources}` for the core source-resolution choice so the workflow API does not leak the CLI flag name `--upgrade`.
 
@@ -147,7 +147,7 @@ Rules:
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
-- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected install scope in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new target.
+- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected Install Level in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new target.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
 - CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.

@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use crate::client_targets::{SkillTargetRoot, project_skill_target_roots, user_skill_target_roots};
 use crate::config::parse_config_str;
 use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
-pub use crate::scope::{ConfigLayer, InstallScope};
+pub use crate::scope::{ConfigLayer, InstallLevel};
 use crate::{Error, InitError, Result};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,7 +51,7 @@ pub enum InitWarning {
 #[non_exhaustive]
 pub struct ExistingTargetArtifact {
     pub clients: Vec<&'static str>,
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
     pub path: PathBuf,
 }
 
@@ -59,7 +59,7 @@ pub struct ExistingTargetArtifact {
 #[non_exhaustive]
 pub struct TargetReadFailure {
     pub clients: Vec<&'static str>,
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
     pub path: PathBuf,
     pub error: String,
 }
@@ -73,14 +73,14 @@ struct SkillTargetInspection {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct PreviewRequest {
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
     pub source_resolution: SourceResolutionPolicy,
 }
 
 impl PreviewRequest {
-    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
+    pub fn new(install_level: InstallLevel, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
-            install_scope,
+            install_level,
             source_resolution,
         }
     }
@@ -93,14 +93,14 @@ pub struct PreviewResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct ApplyRequest {
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
     pub source_resolution: SourceResolutionPolicy,
 }
 
 impl ApplyRequest {
-    pub fn new(install_scope: InstallScope, source_resolution: SourceResolutionPolicy) -> Self {
+    pub fn new(install_level: InstallLevel, source_resolution: SourceResolutionPolicy) -> Self {
         Self {
-            install_scope,
+            install_level,
             source_resolution,
         }
     }
@@ -113,12 +113,12 @@ pub struct ApplyResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct PruneRequest {
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
 }
 
 impl PruneRequest {
-    pub fn new(install_scope: InstallScope) -> Self {
-        Self { install_scope }
+    pub fn new(install_level: InstallLevel) -> Self {
+        Self { install_level }
     }
 }
 
@@ -129,12 +129,12 @@ pub struct PruneResult {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct StatusRequest {
-    pub install_scope: InstallScope,
+    pub install_level: InstallLevel,
 }
 
 impl StatusRequest {
-    pub fn new(install_scope: InstallScope) -> Self {
-        Self { install_scope }
+    pub fn new(install_level: InstallLevel) -> Self {
+        Self { install_level }
     }
 }
 
@@ -362,7 +362,7 @@ fn scan_target_root(
 
         artifacts.push(ExistingTargetArtifact {
             clients: root.clients.clone(),
-            install_scope: root.install_scope,
+            install_level: root.install_level,
             path: entry.path(),
         });
     }
@@ -374,7 +374,7 @@ fn scan_target_root(
 fn scan_failure(root: &SkillTargetRoot, source: std::io::Error) -> TargetReadFailure {
     TargetReadFailure {
         clients: root.clients.clone(),
-        install_scope: root.install_scope,
+        install_level: root.install_level,
         path: root.path.clone(),
         error: source.to_string(),
     }
@@ -604,7 +604,7 @@ mod tests {
     fn assert_artifact(artifacts: &[ExistingTargetArtifact], clients: &[&str], path: &Path) {
         assert!(
             artifacts.iter().any(|artifact| artifact.clients == clients
-                && artifact.install_scope == InstallScope::Project
+                && artifact.install_level == InstallLevel::Project
                 && artifact.path == path),
             "missing artifact for {clients:?} at {} in {artifacts:?}",
             path.display()
