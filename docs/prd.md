@@ -13,7 +13,7 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - Separate the skill manager from skill repositories.
 - Consume skills from filesystem path and git sources.
 - Keep skills in the standard `SKILL.md` directory format.
-- Support repeatable `plan` and `sync` behavior.
+- Support repeatable `preview` and `sync` behavior.
 - Support shared project, user project, and user configuration scopes.
 - Preserve manifest-owned cleanup safety.
 - Prefer portable skill paths where agent clients officially support them.
@@ -60,11 +60,11 @@ agentcfg init
 agentcfg init --project
 agentcfg init --user
 
-agentcfg plan
-agentcfg plan --upgrade
-agentcfg plan --user
-agentcfg plan --user --upgrade
-agentcfg plan --client <client>
+agentcfg preview
+agentcfg preview --upgrade
+agentcfg preview --user
+agentcfg preview --user --upgrade
+agentcfg preview --client <client>
 
 agentcfg sync
 agentcfg sync --upgrade
@@ -86,15 +86,15 @@ Command semantics:
 - `init`: create config for the selected config layer. Default creates user project config at `.agentcfg/config.toml`.
 - `init --project`: create shared project config at `agentcfg.toml`.
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
-- `plan`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or targets.
-- `plan --upgrade`: read-only preview after refreshing source resolutions in memory. For git sources, this means checking whether floating refs moved. For path sources, this means checking whether source content changed.
+- `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or targets.
+- `preview --upgrade`: read-only preview after refreshing source resolutions in memory. For git sources, this means checking whether floating refs moved. For path sources, this means checking whether source content changed.
 - `sync`: create missing lockfiles if needed, then install the locked resolved state.
 - `sync --upgrade`: refresh source resolutions, update active lockfiles, materialize refreshed managed source trees, then install.
-- `prune`: remove stale managed artifacts and stale consumers. It applies by default because `plan` is the preview command.
+- `prune`: remove stale managed artifacts and stale consumers. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
-- `--user`: use user config and user targets for `plan`, `sync`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
-- `--client <client>`: narrow `plan`, `sync`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
+- `--user`: use user config and user targets for `preview`, `sync`, `prune`, and `status`. It selects the user install scope for those commands and is not needed for `doctor`, which is diagnostic.
+- `--client <client>`: narrow `preview`, `sync`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
 ## User Workflows
 
@@ -102,7 +102,7 @@ User project setup:
 
 ```bash
 agentcfg init
-agentcfg plan
+agentcfg preview
 agentcfg sync
 ```
 
@@ -110,7 +110,7 @@ Shared project setup:
 
 ```bash
 agentcfg init --project
-agentcfg plan
+agentcfg preview
 agentcfg sync
 ```
 
@@ -118,27 +118,27 @@ User-level setup:
 
 ```bash
 agentcfg init --user
-agentcfg plan --user
+agentcfg preview --user
 agentcfg sync --user
 ```
 
 Upgrade selected sources:
 
 ```bash
-agentcfg plan --upgrade
+agentcfg preview --upgrade
 agentcfg sync --upgrade
 ```
 
 Remove stale managed artifacts:
 
 ```bash
-agentcfg plan
+agentcfg preview
 agentcfg prune
 ```
 
-## Plan, Sync, and Prune
+## Preview, Sync, and Prune
 
-`plan` should show:
+`preview` should show:
 
 - lockfile changes that would be created or updated
 - source resolutions
@@ -222,7 +222,7 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg init` creates `.agentcfg/config.toml`.
 - `agentcfg init --project` creates `agentcfg.toml`.
 - `agentcfg init --user` creates `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
-- `agentcfg plan` is read-only.
+- `agentcfg preview` is read-only.
 - `agentcfg sync` resolves a path skill source, writes lockfile, materializes managed source, and installs skill symlink.
 - `agentcfg sync --upgrade` refreshes path source content and lockfile.
 - `agentcfg prune` removes only manifest-owned stale artifacts.

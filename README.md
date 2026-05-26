@@ -13,7 +13,7 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 - Keep the skill manager separate from skill repositories.
 - Support standard `SKILL.md` skill directories.
 - Support path and git skill sources.
-- Provide repeatable `plan`, `sync`, and `prune` workflows.
+- Provide repeatable `preview`, `sync`, and `prune` workflows.
 - Manage shared project, user project, and user-level configuration.
 - Install only manifest-owned artifacts and prune conservatively.
 - Prefer portable skill paths where clients support them.
@@ -30,14 +30,14 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 
 ```sh
 agentcfg init [--project|--user]
-agentcfg plan [--user] [--upgrade]
+agentcfg preview [--user] [--upgrade]
 agentcfg sync [--user] [--upgrade]
 agentcfg prune [--user]
 agentcfg status [--user]
 agentcfg doctor
 ```
 
-`plan` is read-only. `sync` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
+`preview` is read-only. `sync` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
 
 ## Configuration Layers
 
