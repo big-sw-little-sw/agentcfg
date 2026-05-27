@@ -23,25 +23,25 @@ fn render_init_result(result: &workflow::InitResult) -> Result<(), CliError> {
     println!("Created config: {}", result.config_file.display());
 
     for warning in &result.warnings {
-        render_skill_target_warning(warning);
+        render_discovery_warning(warning);
     }
 
     Ok(())
 }
 
-fn render_skill_target_warning(warning: &InitWarning) {
+fn render_discovery_warning(warning: &InitWarning) {
     match warning {
-        InitWarning::TargetReadFailure(read_failure) => {
+        InitWarning::DiscoveryLocationReadFailure(read_failure) => {
             eprintln!(
-                "warning: could not scan client target at {} for {}: {}",
+                "warning: could not scan client discovery location at {} for {}: {}",
                 read_failure.path.display(),
                 read_failure.clients.join(", "),
                 read_failure.error
             );
         }
-        InitWarning::ExistingTargetArtifact(artifact) => {
+        InitWarning::UnmanagedInstalledArtifact(artifact) => {
             eprintln!(
-                "warning: unmanaged skill artifact exists at {} ({})",
+                "warning: unmanaged installed artifact exists at {} ({})",
                 artifact.path.display(),
                 artifact.clients.join(", ")
             );

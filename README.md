@@ -15,7 +15,7 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 - Support path and git skill sources.
 - Provide repeatable `preview`, `apply`, and `prune` workflows.
 - Manage shared project, user project, and user-level configuration.
-- Install only manifest-owned artifacts and prune conservatively.
+- Install only manifest-owned Installed Artifacts and prune conservatively.
 - Prefer portable skill paths where clients support them.
 
 ## Non-goals for V1
@@ -37,7 +37,7 @@ agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `apply` installs the locked desired state. `prune` removes stale manifest-owned artifacts only.
+`preview` is read-only. `apply` installs the locked desired state. `prune` removes stale manifest-owned Installed Artifacts only.
 
 ## Configuration Layers
 
@@ -45,7 +45,7 @@ agentcfg doctor
 - `.agentcfg/config.toml` / `.agentcfg/lock.toml` for user project configuration.
 - `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml` / `lock.toml` for user configuration.
 
-Project apply reads shared and user project config. User apply is separate and installs only to user-level targets.
+Project apply reads shared and user project config. User apply is separate and installs only to user-level Client Discovery Locations.
 
 ## Supported clients planned for V1
 
@@ -60,17 +60,17 @@ Project apply reads shared and user project config. User apply is separate and i
 
 ## Design notes
 
-V1 separates source acquisition from target installation:
+V1 separates source acquisition from Client Discovery Location installation:
 
 ```text
-source -> managed materialized tree -> client target symlink
+source -> managed materialized tree -> Client Discovery Location symlink
 ```
 
 This lets normal `apply` reinstall the locked version without depending on mutable path sources or floating git refs, while `apply --upgrade` can refresh source resolutions explicitly.
 
 Cleanup safety rules:
 
-- Remove only manifest-owned artifacts.
+- Remove only manifest-owned Installed Artifacts.
 - Refuse unexpected symlink targets.
 - Never delete unmanaged real files.
 - Delete directories only when empty and manifest-owned.
