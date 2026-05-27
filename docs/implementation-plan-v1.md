@@ -132,9 +132,9 @@ cargo test -p agentcfg-core config
 - [x] Introduce an internal workflow execution context or `init_with_context` helper so cwd, user dirs, project-root discovery, and filesystem effects are injectable in tests and not read ad hoc inside public workflow entrypoints.
 - [x] Create the correct config file for default, `--project`, and `--user`.
 - [x] Create `.agentcfg/` only when needed.
-- [x] Do not write client target directories.
+- [x] Do not write Client Discovery Location directories.
 - [x] Refuse to overwrite existing config files.
-- [x] Report existing unmanaged client artifacts without adopting them.
+- [x] Report existing unmanaged Installed Artifacts without adopting them.
 - [x] Implement `init` as a core workflow that composes config path APIs with conservative file creation.
 - [x] Add CLI/core tests for each init mode.
 
@@ -194,11 +194,11 @@ cargo test --workspace config_layer install_level
 
 #### Task M1.5.3: Align discovery, artifact, and requirement terms
 
-- [ ] Rename domain docs from client target/target registry language to Client Discovery Location and Client Discovery Registry.
-- [ ] Keep implementation path types only as low-level structures when the name is still useful; do not expose target language in user-facing diagnostics.
-- [ ] Rename Consumer model/docs to Discovery Requirement.
-- [ ] Rename target artifact/user-facing artifact language to Installed Artifact.
-- [ ] Update manifest and planner terminology from consuming `{scope, client}` pairs to Discovery Requirements keyed by Config Layer, Client, and Install Level.
+- [x] Rename domain docs from client target/target registry language to Client Discovery Location and Client Discovery Registry.
+- [x] Keep implementation path types only as low-level structures when the name is still useful; do not expose target language in user-facing diagnostics.
+- [x] Rename Consumer model/docs to Discovery Requirement.
+- [x] Rename target artifact/user-facing artifact language to Installed Artifact.
+- [x] Update manifest and planner terminology from consuming `{scope, client}` pairs to Discovery Requirements keyed by Config Layer, Client, and Install Level.
 
 Validation:
 

@@ -65,14 +65,14 @@ Active Config Layers by command:
 | `agentcfg preview --upgrade` | Shared Project Config, then User Project Config | project level |
 | `agentcfg apply` | Shared Project Config, then User Project Config | project level |
 | `agentcfg apply --upgrade` | Shared Project Config, then User Project Config | project level |
-| `agentcfg prune` | manifest consumers for project targets | project level |
+| `agentcfg prune` | manifest Discovery Requirements for project Client Discovery Locations | project level |
 | `agentcfg status` | Shared Project Config, User Project Config, project manifest | project level |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
 | `agentcfg preview --user` | User Config only | user level |
 | `agentcfg preview --user --upgrade` | User Config only | user level |
 | `agentcfg apply --user` | User Config only | user level |
 | `agentcfg apply --user --upgrade` | User Config only | user level |
-| `agentcfg prune --user` | stale consumers and artifacts in user targets | user level |
+| `agentcfg prune --user` | stale Discovery Requirements and Installed Artifacts in user Client Discovery Locations | user level |
 | `agentcfg status --user` | User Config and user manifest | user level |
 
 Layer order:
@@ -93,16 +93,16 @@ This allows shared project config and user project config to both use a source i
 
 Installed names are not namespaced. After alias resolution, installed skill names must be unique per target path. If two active layers resolve to the same installed name and same target path:
 
-- If they refer to the same locked source skill and same installed hash, merge consumers.
+- If they refer to the same locked source skill and same installed hash, merge Discovery Requirements.
 - If they differ, fail with a collision error and require an alias.
 
 Aliases are applied before collision detection.
 
 Client selection is additive across active layers. If shared project config selects `codex` and user project config selects `opencode`, the desired project install includes both clients. If CLI `--client` is omitted, commands at a given Install Level use the full configured client set for the active Config Layers. CLI `--client` may be repeated to narrow that configured client set, but must not add clients outside the configured selection in V1.
 
-Consumers are tracked by `{scope, client}`. Removing a skill or client from one layer makes that consumer stale. `prune` removes stale consumers and deletes the target artifact only when no consumers remain.
+Discovery Requirements are keyed by Config Layer, Client, and Install Level (serialized forms may use Persisted Scope Value for the layer). Removing a skill or client from one layer makes that Discovery Requirement stale. `prune` removes stale Discovery Requirements and deletes the Installed Artifact only when no Discovery Requirements remain.
 
-In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallLevel` for project-vs-user target installation, and reserve `target` for concrete client target artifacts such as target paths and target modes.
+In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallLevel` for project-vs-user installation, and reserve low-level `target_path` / symlink **target** only for filesystem symlink diagnostics and internal manifest fields—not user-facing "client target" language.
 
 Use `SourceResolutionPolicy::{UseLocked, RefreshSources}` for the core source-resolution choice so the workflow API does not leak the CLI flag name `--upgrade`.
 
@@ -147,7 +147,7 @@ Rules:
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
-- `clients = "all"` means every `agentcfg`-supported client target that is enabled for the selected Install Level in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new target.
+- `clients = "all"` means every `agentcfg`-supported Client Discovery Location that is enabled for the selected Install Level in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new Client Discovery Location.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
 - CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
 - Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
@@ -174,7 +174,7 @@ Default behavior:
 
 - Git sources are copied into the active scope's managed source directory.
 - Path sources are also copied by default.
-- Direct source symlink mode is deferred from V1. This would mean pointing a client target directly at the original source directory instead of a managed source tree.
+- Direct source symlink mode is deferred from V1. This would mean pointing a Client Discovery Location directly at the original source directory instead of a managed source tree.
 
 Source manifests:
 
@@ -215,29 +215,29 @@ The exact path format can change during implementation, but it must be stable en
 Why managed source trees are required:
 
 - Plain `apply` can reinstall the locked skill version without rereading a mutable path source or floating git ref.
-- `apply --upgrade` materializes a new managed tree, updates the lockfile, and retargets client symlinks to the new tree.
+- `apply --upgrade` materializes a new managed tree, updates the lockfile, and retargets Client Discovery Location symlinks to the new tree.
 - Old managed trees can remain as cache until no lockfile or manifest target uses them, then `prune` may remove them.
 
-Installed target mode:
+Installed Artifact mode:
 
-- V1 default is `symlink` from the client target path to the managed materialized tree.
-- V1 does not need user-configurable target mode.
-- A future version may add copied target directories if a client proves incompatible with symlinked skills.
+- V1 default is `symlink` from the Client Discovery Location path to the managed materialized tree.
+- V1 does not need user-configurable target mode (internal manifest field).
+- A future version may add copied Client Discovery Location directories if a client proves incompatible with symlinked skills.
 
 For copied sources:
 
 ```text
-source -> managed materialized tree -> client target symlink
+source -> managed materialized tree -> Client Discovery Location symlink
 ```
 
-Client target symlinks must point to the managed materialized tree for the same apply scope:
+Client Discovery Location symlinks must point to the managed materialized tree for the same apply scope:
 
-- project targets point into project generated state under `.agentcfg/sources/`
-- user targets point into user generated state under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
+- project Client Discovery Locations point into project generated state under `.agentcfg/sources/`
+- user Client Discovery Locations point into user generated state under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
 
 Expected symlink target validation:
 
-- Manifest records the expected target for each symlinked client artifact.
+- Manifest records the expected symlink target for each symlinked Installed Artifact.
 - `status` reports missing links, broken targets, and unexpected symlink targets.
 - `prune` refuses to remove a symlink whose current target does not match the manifest.
 - `apply` may update a manifest-owned symlink when the previous target matches the manifest and the desired target changed.
@@ -245,7 +245,7 @@ Expected symlink target validation:
 Apply direction is one-way:
 
 ```text
-source -> managed source tree -> client target
+source -> managed source tree -> Client Discovery Location
 ```
 
 `agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --upgrade` to preview the import and `agentcfg apply --upgrade` to materialize it into managed state.
@@ -290,7 +290,7 @@ For git sources, plain `apply` installs from the locked managed copy. If that co
 
 ## Manifest
 
-The manifest records local generated state and the consumers that keep shared target artifacts alive.
+The manifest records local generated state and the Discovery Requirements that keep shared Installed Artifacts alive.
 
 Project manifest:
 
@@ -313,40 +313,40 @@ Manifest records should include:
 - target path
 - target kind
 - installed hash
-- consuming layer/client pairs
+- Discovery Requirements (config layer, client, install level)
 - created-by marker
 - source acquisition mode
 - target mode
 
-Consumers should be structured, not just a string list:
+Discovery Requirements should be structured, not just a string list (serialized manifest field may remain `consumers` until schema migration):
 
 ```json
 "consumers": [
-  {"scope": "shared-project", "client": "codex"},
-  {"scope": "user-project", "client": "codex"}
+  {"scope": "shared-project", "client": "codex", "install_level": "project"},
+  {"scope": "user-project", "client": "codex", "install_level": "project"}
 ]
 ```
 
-This preserves shared-target behavior while supporting layered consumers later.
+`scope` is the Persisted Scope Value for the Config Layer. This preserves shared Client Discovery Location behavior while supporting layered Discovery Requirements later.
 
 ## Managed Source State Cleanup
 
 Managed source trees under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` are rebuildable cache derived from lockfiles, not user-authored config and not client-visible install targets.
 
-The manifest owns client target artifacts. It does not need one record per internal managed source tree.
+The manifest owns Installed Artifacts at Client Discovery Locations. It does not need one record per internal managed source tree.
 
 Cleanup policy:
 
-- `prune` removes stale target artifacts and stale consumers.
-- `prune` may remove managed source trees that are no longer used by any active lockfile or manifest-owned target.
+- `prune` removes stale Installed Artifacts and stale Discovery Requirements.
+- `prune` may remove managed source trees that are no longer used by any active lockfile or manifest-owned Installed Artifact.
 - If source cleanup is risky or expensive in the first implementation slice, it may be skipped conservatively.
 - `status` should be able to report unused managed source trees as cache leftovers.
 
 Never remove user-authored source directories.
 
-## Client Target Registry
+## Client Discovery Registry
 
-Client target definitions should be built-in defaults with docs-backed provenance and confidence levels. The registry is the V1 compatibility boundary between client-specific filesystem conventions and the shared planning/apply engine.
+Client Discovery Location definitions should be built-in defaults with docs-backed provenance and confidence levels. The Client Discovery Registry is the V1 compatibility boundary between client-specific filesystem conventions and the shared planning/apply engine.
 
 Registry entries should be keyed by `{resource_kind, client, scope}`. V1 only registers `resource_kind = "skill"`, but including the key keeps manifests, plan records, and diagnostics from baking in skill-only assumptions about target ownership.
 
@@ -354,7 +354,7 @@ Default policy:
 
 - Prefer portable shared paths where officially supported.
 - Use client-native paths when there is no portable path.
-- Disable uncertain targets by default.
+- Disable uncertain Client Discovery Locations by default.
 
 V1 recommended built-ins:
 
@@ -374,22 +374,22 @@ Known native alternatives should be represented in the registry but not necessar
 - Cline compatibility paths: `.clinerules/skills/{name}`, `.claude/skills/{name}`
 - Cursor: `.cursor/skills/{name}`, `~/.cursor/skills/{name}`
 
-The registry should carry confidence/provenance metadata so `doctor` can explain uncertain or experimental targets. Cline's first-class skill support is experimental, so the Cline `.cline/skills/{name}` target should be enabled with explicit provenance and an experimental confidence note. Do not use `.agents/skills/{name}` for Cline unless Cline documents or implements that discovery path.
+The registry should carry confidence/provenance metadata so `doctor` can explain uncertain or experimental Client Discovery Locations. Cline's first-class skill support is experimental, so the Cline `.cline/skills/{name}` Client Discovery Location should be enabled with explicit provenance and an experimental confidence note. Do not use `.agents/skills/{name}` for Cline unless Cline documents or implements that discovery path.
 
-Client families such as clients that share `.agents/skills/{name}` should be represented as multiple client registry entries that resolve to the same target path, not as a separate family interface. Shared target behavior belongs to the consumer model.
+Client families such as clients that share `.agents/skills/{name}` should be represented as multiple client registry entries that resolve to the same Client Discovery Location path, not as a separate family interface. Shared Client Discovery Location behavior belongs to the Discovery Requirement model.
 
-## Shared Target Consumers
+## Shared Client Discovery Locations
 
-When multiple clients use the same target path, install one artifact and track multiple consumers.
+When multiple clients use the same Client Discovery Location path, install one Installed Artifact and track multiple Discovery Requirements.
 
 Example:
 
 ```text
 .agents/skills/do-code-review
-consumers: codex, pi, opencode
+Discovery Requirements: codex, pi, opencode (shared-project, project level)
 ```
 
-Adding a client adds consumers. Removing a client makes those consumers stale; `prune` removes stale consumers and deletes the artifact only when no consumers remain.
+Adding a client adds Discovery Requirements. Removing a client makes those Discovery Requirements stale; `prune` removes stale Discovery Requirements and deletes the Installed Artifact only when no Discovery Requirements remain.
 
 ## Aliases and Collisions
 
@@ -492,11 +492,11 @@ Reason: these are not portable skill content and may hang, expose system resourc
 
 - create config for the selected scope
 - create `.agentcfg/` when needed
-- detect and report existing unmanaged client artifacts
+- detect and report existing unmanaged Installed Artifacts
 - not adopt, overwrite, or delete existing artifacts
-- not write target client directories; `apply` does that
+- not write Client Discovery Location directories; `apply` does that
 
-Existing client target artifacts during init are unmanaged:
+Existing Installed Artifacts at Client Discovery Locations during init are unmanaged:
 
 ```text
 Found existing unmanaged artifacts:
@@ -514,7 +514,7 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 - unexpected symlink targets
 - missing managed sources
 - stale managed artifacts
-- unmanaged artifacts in configured target directories, reported as informational unless they conflict with desired managed targets
+- unmanaged artifacts in configured Client Discovery Locations, reported as informational unless they conflict with desired managed Installed Artifacts
 - config/lock mismatch
 - manifest readability
 
@@ -526,8 +526,8 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 - path writability
 - config schema validity
 - optional network/source checks
-- target confidence warnings
-- unmanaged artifacts only when they affect environment health, such as blocking a planned target path
+- Client Discovery Location confidence warnings
+- unmanaged artifacts only when they affect environment health, such as blocking a planned Client Discovery Location path
 
 `doctor` may be slower and more explanatory. `status` should be fast, local, and scriptable.
 
@@ -536,21 +536,21 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 Keep implementation design skill-first. The planner/apply boundary is the important one:
 
 ```text
-resolve resource-specific desired state -> desired target artifacts -> build plan -> render plan OR apply plan
+resolve resource-specific desired state -> desired Installed Artifacts -> build plan -> render plan OR apply plan
 ```
 
 `preview` and `apply` should share the same planner.
 
-V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired target artifacts:
+V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired Installed Artifacts:
 
 - `kind = "skill"`
-- target path and target mode
+- Client Discovery Location path and target mode (internal manifest field)
 - managed source path
 - installed name and installed hash
 - source/layer provenance
-- consuming `{scope, client}` pairs
+- Discovery Requirements keyed by Config Layer, Client, and Install Level
 
-This keeps the current implementation skill-first while avoiding skill-specific duplication in target planning, manifest safety, and client diagnostics.
+This keeps the current implementation skill-first while avoiding skill-specific duplication in discovery planning, manifest safety, and client diagnostics.
 
 ## Cargo Workspace Boundary
 
@@ -576,7 +576,7 @@ The `agentcfg-core` crate owns the reusable skill-management engine:
 - lockfile and manifest models
 - desired-state planning
 - apply, prune, status, and doctor operations
-- built-in client target registry
+- built-in Client Discovery Registry
 - filesystem safety invariants
 
 The published binary name remains:
@@ -587,11 +587,11 @@ agentcfg
 
 The core crate is the boundary for future non-CLI interfaces such as a TUI, desktop UI, editor integration, daemon, or tests that need structured plan/status results. Those interfaces should call the same planner and operation APIs as the CLI instead of shelling out to the `agentcfg` binary or duplicating planner logic.
 
-Do not make the core crate a broad generic platform in V1. Its public surface should remain skill-first and should expose structured domain results rather than terminal-formatted text. A separately branded `agentcfg-sdk` crate or stabilized external API can be added later if real downstream consumers need stronger compatibility guarantees.
+Do not make the core crate a broad generic platform in V1. Its public surface should remain skill-first and should expose structured domain results rather than terminal-formatted text. A separately branded `agentcfg-sdk` crate or stabilized external API can be added later if real downstream integrators need stronger compatibility guarantees.
 
 ## Future Resource Types
 
-V1 should be implemented as a skill-first resolver plus shared target planning and application. It is acceptable for manifest or plan records to include `kind = "skill"` and for the client registry to key entries by resource kind, but do not build generic resource manager traits, factories, or interfaces before a second resource kind exists.
+V1 should be implemented as a skill-first resolver plus shared discovery planning and application. It is acceptable for manifest or plan records to include `kind = "skill"` and for the Client Discovery Registry to key entries by resource kind, but do not build generic resource manager traits, factories, or interfaces before a second resource kind exists.
 
 Future versions may add resource kinds such as MCP servers, hooks, rules, commands, and workflows. MCP should be a separate resource kind later, not a projection of a skill.
 
@@ -626,7 +626,7 @@ These commands should narrow the aggregate workflow to one resource kind. They s
 
 ### Additional resource kinds
 
-Future resource kinds may include MCP servers, hooks, rules, commands, and workflows. Each resource kind should own its own config parsing, source resolution, conflict rules, safety rules, and apply behavior. Shared core code may coordinate structured plan/status/apply results, but it should not force every resource into the skill target artifact model.
+Future resource kinds may include MCP servers, hooks, rules, commands, and workflows. Each resource kind should own its own config parsing, source resolution, conflict rules, safety rules, and apply behavior. Shared core code may coordinate structured plan/status/apply results, but it should not force every resource into the skill Installed Artifact model.
 
 ### MCP design questions
 

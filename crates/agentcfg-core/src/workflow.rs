@@ -9,7 +9,10 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::client_targets::{SkillTargetRoot, project_skill_target_roots, user_skill_target_roots};
+use crate::discovery_registry::{
+    ClientDiscoveryLocation, project_client_discovery_locations,
+    user_client_discovery_locations,
+};
 use crate::config::parse_config_str;
 use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
 pub use crate::scope::{ConfigLayer, InstallLevel};
@@ -43,13 +46,13 @@ pub struct InitResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InitWarning {
-    ExistingTargetArtifact(ExistingTargetArtifact),
-    TargetReadFailure(TargetReadFailure),
+    UnmanagedInstalledArtifact(UnmanagedInstalledArtifact),
+    DiscoveryLocationReadFailure(DiscoveryLocationReadFailure),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct ExistingTargetArtifact {
+pub struct UnmanagedInstalledArtifact {
     pub clients: Vec<&'static str>,
     pub install_level: InstallLevel,
     pub path: PathBuf,
@@ -57,7 +60,7 @@ pub struct ExistingTargetArtifact {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct TargetReadFailure {
+pub struct DiscoveryLocationReadFailure {
     pub clients: Vec<&'static str>,
     pub install_level: InstallLevel,
     pub path: PathBuf,
@@ -65,9 +68,9 @@ pub struct TargetReadFailure {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct SkillTargetInspection {
-    existing_artifacts: Vec<ExistingTargetArtifact>,
-    read_failures: Vec<TargetReadFailure>,
+struct DiscoveryLocationInspection {
+    existing_artifacts: Vec<UnmanagedInstalledArtifact>,
+    read_failures: Vec<DiscoveryLocationReadFailure>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -236,7 +239,7 @@ fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<
 
     Ok(InitResult {
         config_file: config_paths.config_file().to_path_buf(),
-        warnings: init_warnings_from(inspect_existing_skill_targets(
+        warnings: init_warnings_from(inspect_existing_discovery_locations(
             request.config_layer,
             context,
         )),
@@ -301,28 +304,28 @@ fn create_config_file(path: &Path, layer: ConfigLayer, contents: &str) -> Result
         })
 }
 
-fn inspect_existing_skill_targets(
+fn inspect_existing_discovery_locations(
     layer: ConfigLayer,
     context: &WorkflowContext,
-) -> SkillTargetInspection {
-    let roots = match layer {
+) -> DiscoveryLocationInspection {
+    let locations = match layer {
         ConfigLayer::SharedProject | ConfigLayer::UserProject => {
             let Ok(project_root) = discover_project_root(&context.cwd) else {
-                return SkillTargetInspection::default();
+                return DiscoveryLocationInspection::default();
             };
-            project_skill_target_roots(&project_root)
+            project_client_discovery_locations(&project_root)
         }
         ConfigLayer::User => {
             let Some(home_dir) = context.home_dir() else {
-                return SkillTargetInspection::default();
+                return DiscoveryLocationInspection::default();
             };
-            user_skill_target_roots(home_dir)
+            user_client_discovery_locations(home_dir)
         }
     };
 
-    let mut inspection = SkillTargetInspection::default();
-    for root in roots {
-        match scan_target_root(&root) {
+    let mut inspection = DiscoveryLocationInspection::default();
+    for location in locations {
+        match scan_discovery_location(&location) {
             Ok(artifacts) => inspection.existing_artifacts.extend(artifacts),
             Err(read_failure) => inspection.read_failures.push(read_failure),
         }
@@ -331,38 +334,38 @@ fn inspect_existing_skill_targets(
     inspection
 }
 
-fn init_warnings_from(inspection: SkillTargetInspection) -> Vec<InitWarning> {
+fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarning> {
     inspection
         .read_failures
         .into_iter()
-        .map(InitWarning::TargetReadFailure)
+        .map(InitWarning::DiscoveryLocationReadFailure)
         .chain(
             inspection
                 .existing_artifacts
                 .into_iter()
-                .map(InitWarning::ExistingTargetArtifact),
+                .map(InitWarning::UnmanagedInstalledArtifact),
         )
         .collect()
 }
 
-fn scan_target_root(
-    root: &SkillTargetRoot,
-) -> std::result::Result<Vec<ExistingTargetArtifact>, TargetReadFailure> {
-    match root.path.try_exists() {
+fn scan_discovery_location(
+    location: &ClientDiscoveryLocation,
+) -> std::result::Result<Vec<UnmanagedInstalledArtifact>, DiscoveryLocationReadFailure> {
+    match location.path.try_exists() {
         Ok(false) => return Ok(Vec::new()),
         Ok(true) => {}
-        Err(source) => return Err(scan_failure(root, source)),
+        Err(source) => return Err(scan_failure(location, source)),
     }
 
-    let entries = fs::read_dir(&root.path).map_err(|source| scan_failure(root, source))?;
+    let entries = fs::read_dir(&location.path).map_err(|source| scan_failure(location, source))?;
 
     let mut artifacts = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(|source| scan_failure(root, source))?;
+        let entry = entry.map_err(|source| scan_failure(location, source))?;
 
-        artifacts.push(ExistingTargetArtifact {
-            clients: root.clients.clone(),
-            install_level: root.install_level,
+        artifacts.push(UnmanagedInstalledArtifact {
+            clients: location.clients.clone(),
+            install_level: location.install_level,
             path: entry.path(),
         });
     }
@@ -371,11 +374,14 @@ fn scan_target_root(
     Ok(artifacts)
 }
 
-fn scan_failure(root: &SkillTargetRoot, source: std::io::Error) -> TargetReadFailure {
-    TargetReadFailure {
-        clients: root.clients.clone(),
-        install_level: root.install_level,
-        path: root.path.clone(),
+fn scan_failure(
+    location: &ClientDiscoveryLocation,
+    source: std::io::Error,
+) -> DiscoveryLocationReadFailure {
+    DiscoveryLocationReadFailure {
+        clients: location.clients.clone(),
+        install_level: location.install_level,
+        path: location.path.clone(),
         error: source.to_string(),
     }
 }
@@ -468,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn unmanaged_project_artifacts_are_reported_and_not_modified() {
+    fn unmanaged_project_installed_artifacts_are_reported_and_not_modified() {
         let temp = tempfile::tempdir().unwrap();
         let agents_skill = temp.path().join(".agents").join("skills").join("review");
         let claude_skill = temp.path().join(".claude").join("skills").join("docs");
@@ -480,7 +486,7 @@ mod tests {
         let result =
             init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
 
-        let artifacts = existing_target_artifacts(&result);
+        let artifacts = unmanaged_installed_artifacts(&result);
         assert_eq!(
             artifacts.len(),
             2,
@@ -500,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_target_roots_are_not_created() {
+    fn missing_discovery_location_roots_are_not_created() {
         let temp = tempfile::tempdir().unwrap();
         let context = context_for_project(temp.path());
 
@@ -515,7 +521,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn target_scan_failure_is_reported_as_warning_after_config_creation() {
+    fn discovery_location_scan_failure_is_reported_as_warning_after_config_creation() {
         use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::tempdir().unwrap();
@@ -534,7 +540,7 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::TargetReadFailure(read_failure)
+                InitWarning::DiscoveryLocationReadFailure(read_failure)
                     if read_failure.path == agents_skills
                         && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
@@ -545,7 +551,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn target_scan_metadata_failure_is_reported_as_warning_after_config_creation() {
+    fn discovery_location_scan_metadata_failure_is_reported_as_warning_after_config_creation() {
         use std::os::unix::fs::PermissionsExt;
 
         let temp = tempfile::tempdir().unwrap();
@@ -565,7 +571,7 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::TargetReadFailure(read_failure)
+                InitWarning::DiscoveryLocationReadFailure(read_failure)
                     if read_failure.path == agents_skills
                         && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
@@ -590,18 +596,18 @@ mod tests {
         );
     }
 
-    fn existing_target_artifacts(result: &InitResult) -> Vec<ExistingTargetArtifact> {
+    fn unmanaged_installed_artifacts(result: &InitResult) -> Vec<UnmanagedInstalledArtifact> {
         result
             .warnings
             .iter()
             .filter_map(|warning| match warning {
-                InitWarning::ExistingTargetArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::TargetReadFailure(_) => None,
+                InitWarning::UnmanagedInstalledArtifact(artifact) => Some(artifact.clone()),
+                InitWarning::DiscoveryLocationReadFailure(_) => None,
             })
             .collect()
     }
 
-    fn assert_artifact(artifacts: &[ExistingTargetArtifact], clients: &[&str], path: &Path) {
+    fn assert_artifact(artifacts: &[UnmanagedInstalledArtifact], clients: &[&str], path: &Path) {
         assert!(
             artifacts.iter().any(|artifact| artifact.clients == clients
                 && artifact.install_level == InstallLevel::Project
