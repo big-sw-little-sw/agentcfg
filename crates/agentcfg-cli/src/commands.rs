@@ -39,9 +39,9 @@ fn render_discovery_warning(warning: &InitWarning) {
                 read_failure.error
             );
         }
-        InitWarning::UnmanagedInstalledArtifact(artifact) => {
+        InitWarning::UnmanagedArtifact(artifact) => {
             eprintln!(
-                "warning: unmanaged installed artifact exists at {} ({})",
+                "warning: unmanaged artifact exists at {} ({})",
                 artifact.path.display(),
                 artifact.clients.join(", ")
             );
