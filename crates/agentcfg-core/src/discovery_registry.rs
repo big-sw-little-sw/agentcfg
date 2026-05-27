@@ -2,6 +2,9 @@
 //!
 //! Each [`ClientDiscoveryLocation`] groups one or more clients that share the same
 //! filesystem path for skill discovery at a given [`InstallLevel`].
+//!
+//! Future manifest **Discovery Requirements** are keyed by Config Layer, Client, and
+//! Install Level (not yet modeled as a Rust struct).
 
 use std::path::{Path, PathBuf};
 
@@ -70,12 +73,6 @@ fn client_discovery_locations(
     locations
 }
 
-/// Glossary anchor for future manifest **Discovery Requirements** keyed by Config Layer,
-/// Client, and Install Level (not yet modeled as a Rust struct).
-#[allow(dead_code)]
-pub(crate) const DISCOVERY_REQUIREMENT_GLOSSARY: &str =
-    "Discovery Requirements are keyed by config layer, client, and install level";
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,13 +93,5 @@ mod tests {
             "clients sharing .agents/skills were not grouped"
         );
         assert_eq!(agents.install_level, InstallLevel::Project);
-    }
-
-    #[test]
-    fn discovery_requirement_glossary_documents_manifest_keying() {
-        assert!(
-            DISCOVERY_REQUIREMENT_GLOSSARY.contains("config layer"),
-            "future manifest entries use Discovery Requirements keyed by config layer, client, install level"
-        );
     }
 }

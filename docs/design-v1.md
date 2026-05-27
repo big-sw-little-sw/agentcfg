@@ -238,7 +238,7 @@ Client Discovery Location symlinks must point to the managed materialized tree f
 Expected symlink target validation:
 
 - Manifest records the expected symlink target for each symlinked Installed Artifact.
-- `status` reports missing links, broken targets, and unexpected symlink targets.
+- `status` reports missing links, **Broken Symlinks**, and **Unexpected Symlink Targets**.
 - `prune` refuses to remove a symlink whose current target does not match the manifest.
 - `apply` may update a manifest-owned symlink when the previous target matches the manifest and the desired target changed.
 
@@ -494,11 +494,11 @@ Reason: these are not portable skill content and may hang, expose system resourc
 
 - create config for the selected scope
 - create `.agentcfg/` when needed
-- detect and report existing unmanaged Installed Artifacts
+- detect and report existing **Unmanaged Artifacts**
 - not adopt, overwrite, or delete existing artifacts
 - not write Client Discovery Location directories; `apply` does that
 
-Existing Installed Artifacts at Client Discovery Locations during init are unmanaged:
+Filesystem entries at Client Discovery Locations during init that are not in the Manifest are **Unmanaged Artifacts**:
 
 ```text
 Found existing unmanaged artifacts:
@@ -509,18 +509,19 @@ agentcfg will not modify or remove them.
 
 Adoption/import is out of V1 unless a concrete migration need forces it.
 
-`status` checks:
+`status` checks managed install-state consistency:
 
-- installed managed artifacts by client
-- broken symlinks
-- unexpected symlink targets
+- installed managed Installed Artifacts by client
+- **Broken Symlinks**
+- **Unexpected Symlink Targets**
 - missing Managed Skill Content
-- stale managed artifacts
-- unmanaged artifacts in configured Client Discovery Locations, reported as informational unless they conflict with desired managed Installed Artifacts
+- **Stale Installed Artifacts**
+- **Unsatisfied Discovery Requirements**
+- **Unmanaged Artifacts** in configured Client Discovery Locations, reported as informational unless they conflict with desired managed Installed Artifacts
 - config/lock mismatch
 - manifest readability
 
-`doctor` checks:
+`doctor` checks environment and configuration readiness:
 
 - git availability
 - repo root detection
@@ -529,9 +530,9 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 - config schema validity
 - optional network/source checks
 - Client Discovery Location confidence warnings
-- unmanaged artifacts only when they affect environment health, such as blocking a planned Client Discovery Location path
+- **Unmanaged Artifacts** only when they affect environment health, such as blocking a planned Client Discovery Location path
 
-`doctor` may be slower and more explanatory. `status` should be fast, local, and scriptable.
+`doctor` may be slower and more explanatory. `status` should be fast, local, and scriptable. `doctor` does not report managed install-state consistency.
 
 ## Implementation Boundary
 

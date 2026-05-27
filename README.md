@@ -37,7 +37,7 @@ agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes stale manifest-owned Installed Artifacts only.
+`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes **Stale Installed Artifacts** and **Stale Discovery Requirements** from managed state only. `status` reports managed install-state consistency. `doctor` checks environment and configuration readiness.
 
 ## Configuration Layers
 
@@ -71,7 +71,7 @@ This lets normal `apply` reinstall the locked version without depending on mutab
 Cleanup safety rules:
 
 - Remove only manifest-owned Installed Artifacts.
-- Refuse unexpected symlink targets.
+- Refuse **Unexpected Symlink Target** destinations.
 - Never delete unmanaged real files.
 - Delete directories only when empty and manifest-owned.
 

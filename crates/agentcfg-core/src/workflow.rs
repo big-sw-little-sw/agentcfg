@@ -4,6 +4,13 @@
 //! **Managed State** and **Client Discovery Locations**. V1 stubs return
 //! placeholder results until planning and apply are implemented.
 //!
+//! **Status** reports managed install-state consistency for an Install Level.
+//! **Doctor** reports environment and configuration readiness; it does not
+//! replace **Status** for install-state reporting.
+//!
+//! **Prune** removes **Stale Discovery Requirements** and **Stale Installed
+//! Artifacts** from managed state when removal is safe.
+//!
 //! These functions are orchestration boundaries, not the lower-level
 //! config, planning, apply, status, or diagnostic APIs. Those focused APIs
 //! should be added when they are needed by implemented behavior.
@@ -58,13 +65,13 @@ pub struct InitResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InitWarning {
-    UnmanagedInstalledArtifact(UnmanagedInstalledArtifact),
+    UnmanagedArtifact(UnmanagedArtifact),
     DiscoveryLocationReadFailure(DiscoveryLocationReadFailure),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct UnmanagedInstalledArtifact {
+pub struct UnmanagedArtifact {
     pub clients: Vec<&'static str>,
     pub install_level: InstallLevel,
     pub path: PathBuf,
@@ -81,7 +88,7 @@ pub struct DiscoveryLocationReadFailure {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct DiscoveryLocationInspection {
-    existing_artifacts: Vec<UnmanagedInstalledArtifact>,
+    existing_artifacts: Vec<UnmanagedArtifact>,
     read_failures: Vec<DiscoveryLocationReadFailure>,
 }
 
@@ -355,14 +362,14 @@ fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarnin
             inspection
                 .existing_artifacts
                 .into_iter()
-                .map(InitWarning::UnmanagedInstalledArtifact),
+                .map(InitWarning::UnmanagedArtifact),
         )
         .collect()
 }
 
 fn scan_discovery_location(
     location: &ClientDiscoveryLocation,
-) -> std::result::Result<Vec<UnmanagedInstalledArtifact>, DiscoveryLocationReadFailure> {
+) -> std::result::Result<Vec<UnmanagedArtifact>, DiscoveryLocationReadFailure> {
     match location.path.try_exists() {
         Ok(false) => return Ok(Vec::new()),
         Ok(true) => {}
@@ -375,7 +382,7 @@ fn scan_discovery_location(
     for entry in entries {
         let entry = entry.map_err(|source| scan_failure(location, source))?;
 
-        artifacts.push(UnmanagedInstalledArtifact {
+        artifacts.push(UnmanagedArtifact {
             clients: location.clients.clone(),
             install_level: location.install_level,
             path: entry.path(),
@@ -402,18 +409,6 @@ fn scan_failure(
 mod tests {
     use super::*;
     use crate::config::parse_config_str;
-
-    #[test]
-    fn source_refresh_policy_refresh_sources_variant() {
-        assert_eq!(
-            SourceResolutionPolicy::RefreshSources,
-            SourceResolutionPolicy::RefreshSources
-        );
-        assert_ne!(
-            SourceResolutionPolicy::RefreshSources,
-            SourceResolutionPolicy::UseLocked
-        );
-    }
 
     #[test]
     fn starter_configs_parse_for_all_layers() {
@@ -498,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn unmanaged_project_installed_artifacts_are_reported_and_not_modified() {
+    fn unmanaged_project_artifacts_are_reported_and_not_modified() {
         let temp = tempfile::tempdir().unwrap();
         let agents_skill = temp.path().join(".agents").join("skills").join("review");
         let claude_skill = temp.path().join(".claude").join("skills").join("docs");
@@ -510,7 +505,7 @@ mod tests {
         let result =
             init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
 
-        let artifacts = unmanaged_installed_artifacts(&result);
+        let artifacts = unmanaged_artifacts(&result);
         assert_eq!(
             artifacts.len(),
             2,
@@ -620,18 +615,18 @@ mod tests {
         );
     }
 
-    fn unmanaged_installed_artifacts(result: &InitResult) -> Vec<UnmanagedInstalledArtifact> {
+    fn unmanaged_artifacts(result: &InitResult) -> Vec<UnmanagedArtifact> {
         result
             .warnings
             .iter()
             .filter_map(|warning| match warning {
-                InitWarning::UnmanagedInstalledArtifact(artifact) => Some(artifact.clone()),
+                InitWarning::UnmanagedArtifact(artifact) => Some(artifact.clone()),
                 InitWarning::DiscoveryLocationReadFailure(_) => None,
             })
             .collect()
     }
 
-    fn assert_artifact(artifacts: &[UnmanagedInstalledArtifact], clients: &[&str], path: &Path) {
+    fn assert_artifact(artifacts: &[UnmanagedArtifact], clients: &[&str], path: &Path) {
         assert!(
             artifacts.iter().any(|artifact| artifact.clients == clients
                 && artifact.install_level == InstallLevel::Project

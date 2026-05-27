@@ -31,13 +31,15 @@ pub(crate) enum CliCommand {
     )]
     Apply(ApplyArgs),
 
-    #[command(about = "Remove stale managed installed artifacts")]
+    #[command(
+        about = "Remove Stale Installed Artifacts and Stale Discovery Requirements from managed state"
+    )]
     Prune(InstallLevelArgs),
 
-    #[command(about = "Show managed install state")]
+    #[command(about = "Report managed install-state consistency for an Install Level")]
     Status(InstallLevelArgs),
 
-    #[command(about = "Check local configuration and environment")]
+    #[command(about = "Check environment and configuration readiness")]
     Doctor,
 }
 

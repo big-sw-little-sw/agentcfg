@@ -203,7 +203,7 @@ cargo test --workspace config_layer install_level
 Validation:
 
 ```sh
-cargo test --workspace discovery_registry discovery_requirement
+cargo test --workspace discovery_registry
 ```
 
 #### Task M1.5.4: Align skill source, selection, and managed content terms
@@ -235,22 +235,26 @@ cargo test --workspace skill_source skill_selection discovery_name source_refres
 Validation:
 
 ```sh
-cargo test --workspace desired_state lockfile manifest
+cargo test --workspace lockfile manifest
+cargo test --workspace
+rg 'GeneratedStatePaths|generated state' crates/ docs/prd.md docs/design-v1.md README.md
 ```
 
 #### Task M1.5.6: Align status, prune, and safety terminology
 
-- [ ] Use Unmanaged Artifact for filesystem entries at Client Discovery Locations that are not recorded in the Manifest.
-- [ ] Use Stale Discovery Requirement for Manifest requirements no longer present in Desired State.
-- [ ] Use Unsatisfied Discovery Requirement for Desired State requirements without a valid Installed Artifact.
-- [ ] Use Stale Installed Artifact for Manifest-recorded Installed Artifacts with no remaining Discovery Requirements.
-- [ ] Keep Unexpected Symlink Target and Broken Symlink scoped to filesystem symlink diagnostics, not client-target language.
-- [ ] Preserve Status as managed install-state consistency and Doctor as environment/configuration readiness.
+- [x] Use Unmanaged Artifact for filesystem entries at Client Discovery Locations that are not recorded in the Manifest.
+- [x] Use Stale Discovery Requirement for Manifest requirements no longer present in Desired State.
+- [x] Use Unsatisfied Discovery Requirement for Desired State requirements without a valid Installed Artifact.
+- [x] Use Stale Installed Artifact for Manifest-recorded Installed Artifacts with no remaining Discovery Requirements.
+- [x] Keep Unexpected Symlink Target and Broken Symlink scoped to filesystem symlink diagnostics, not client-target language.
+- [x] Preserve Status as managed install-state consistency and Doctor as environment/configuration readiness.
 
 Validation:
 
 ```sh
-cargo test --workspace status prune doctor
+cargo test --workspace
+rg 'UnmanagedInstalledArtifact|unmanaged installed artifact' crates/ docs/prd.md docs/design-v1.md README.md
+rg -i 'stale consumer|broken target' docs/prd.md docs/design-v1.md README.md
 ```
 
 #### Task M1.5.7: Update downstream milestone wording
@@ -495,7 +499,7 @@ cargo test -p agentcfg-core client_registry
 Validation:
 
 ```sh
-cargo test -p agentcfg-core desired_state
+cargo test -p agentcfg-core desired_target_state
 ```
 
 #### Task M5.3: Generate structured plan entries
