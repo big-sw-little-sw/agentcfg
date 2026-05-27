@@ -308,7 +308,7 @@ cargo test --workspace desired_state namespaced_skill_source
 
 #### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
 
-- [ ] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
+- [x] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
 - [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
 - [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
 - [x] Tighten init Unmanaged Artifact scan to skill-shaped entries (directories containing `SKILL.md`); warn when user init cannot scan user-level Client Discovery Locations (`HOME` unset).
@@ -319,11 +319,17 @@ Goal: resolve Skill Selection from local path Skill Sources without writing Mana
 
 #### Task M2.1: Discover path Skill Source skill directories
 
-- [ ] Discover direct child directories containing `SKILL.md`.
-- [ ] Return Source Skill Names and Skill Source paths.
-- [ ] Reject missing Skill Source directories with a clear diagnostic.
-- [ ] Do not support nested layouts beyond the selected V1 Skill Source layout until the open question is resolved.
-- [ ] Add tests for discovery, empty Skill Sources, and missing Skill Sources.
+- [x] Implement discovery under `skill_source/` (do not grow `workflow::init` with resolution logic).
+- [x] Add optional `[[skill_sources]].discovery_depth` (default `4`, max `8`, per Skill Source).
+- [x] Resolve configured `path` relative to the config file’s parent directory, or use absolute paths as-is; discover from the resolved Skill Source directory.
+- [x] Discover **Skills** as directories containing `SKILL.md` within `discovery_depth` path segments below the Skill Source root; skip hidden directories (name starts with `.`).
+- [x] Skip symlink directory entries below the Skill Source root for M2.1; symlink materialization and external symlink rejection are handled in M3.
+- [x] Apply nested-skill exclusion: when a directory contains `SKILL.md`, treat it as a **Skill** and do not scan its children.
+- [x] Set **Source Skill Name** to the skill directory’s leaf name; fail with a clear diagnostic when duplicate leaf names appear at different paths in the same Skill Source.
+- [x] Return structured discoveries (`source_skill_name`, skill directory path); empty Skill Source directories return success with zero skills.
+- [x] Reject missing and non-directory Skill Source paths with distinct clear diagnostics (`skill_source_id`, configured path, resolved path).
+- [x] Document traversal rules in `design-v1.md` § Skill Source Discovery.
+- [x] Add tests for discovery, depth limits, nested-skill exclusion, duplicate names, hidden dirs, symlink directory skipping, empty Skill Sources, missing Skill Sources, non-directory Skill Sources, and path resolution.
 
 Validation:
 
@@ -336,8 +342,9 @@ cargo test -p agentcfg-core path_skill_source_discovery
 - [ ] Select all discovered skills when neither `include` nor `groups` is set.
 - [ ] Select only Included Skills when `include` is set.
 - [ ] Report missing Included Skills with Skill Source and Config Layer context.
+- [ ] Emit a structured warning (CLI renders later) when discovery returns zero skills but the resolved Skill Source directory exists; include `skill_source_id`, resolved path, and effective `discovery_depth`.
 - [ ] Keep Skill Selection output structured for later Skill Alias handling, materialization, and Desired State construction.
-- [ ] Add tests for all-skills, included-skills, and missing-include cases.
+- [ ] Add tests for all-skills, included-skills, missing-include, and empty-discovery warning cases.
 
 Validation:
 
@@ -347,7 +354,7 @@ cargo test -p agentcfg-core skill_selection
 
 #### Task M2.3: Resolve Skill Source-local Skill Groups
 
-- [ ] Parse optional Skill Source `skills.toml`.
+- [ ] Parse optional `skills.toml` only at the resolved Skill Source root (not under organizational subdirectories).
 - [ ] Resolve selected `groups` into Source Skill Names.
 - [ ] Report missing Skill Groups and Skill Group references to missing Source Skill Names.
 - [ ] Merge `include` and `groups` deterministically.
@@ -571,6 +578,7 @@ cargo test -p agentcfg-core preview_operations
 
 - [ ] Render structured preview entries as human-readable terminal output.
 - [ ] Include Discovery Name preparation and uncertain Client Discovery Location warnings.
+- [ ] Render structured empty–Skill Source discovery warnings from core (see M2.2).
 - [ ] Ensure `agentcfg preview` performs no persistent writes.
 - [ ] Add CLI snapshot or assertion tests for representative preview output.
 
@@ -688,6 +696,7 @@ cargo test --workspace status_render
 - [ ] Check config schema validity.
 - [ ] Check Unmanaged Artifacts only when they block previewed Client Discovery Location paths.
 - [ ] Keep optional network/Skill Source checks isolated so local doctor remains deterministic in tests.
+- [ ] Optionally report configured path Skill Sources that exist but discover zero skills (informational/warning; not required for M2.1).
 - [ ] Expose doctor checks as structured core results with severity and context; do not return terminal-formatted text from core.
 - [ ] Add tests with injectable command/path probes.
 
@@ -743,7 +752,7 @@ cargo test -p agentcfg-core git_resolution
 
 #### Task M8.3: Discover and materialize git skills through the existing pipeline
 
-- [ ] Run skill discovery against resolved git content.
+- [ ] Run path Skill Source discovery against the resolved git checkout root using the same `discovery_depth` and traversal rules as path Skill Sources.
 - [ ] Reuse Skill Source-local Skill Group resolution.
 - [ ] Reuse safe materialization and hashing.
 - [ ] Reuse Discovery Name preparation behavior.
@@ -808,4 +817,4 @@ Run before declaring V1 complete:
 
 - [X] Should git Skill Sources be included before or after the first path Skill Source apply milestone? YES.
 - [ ] How much Skill Source provenance should be exposed in normal command output versus `doctor`?
-- [ ] Should V1 support both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` Skill Source layouts?
+- [X] Should V1 support both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` Skill Source layouts? YES — bounded discovery to `discovery_depth` with nested-skill exclusion; see M2.1 and `design-v1.md` § Skill Source Discovery.

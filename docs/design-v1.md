@@ -119,6 +119,7 @@ scope = "user-project"
 id = "personal"
 type = "path"
 path = "../my-agent-skills/skills"
+discovery_depth = 4
 include = ["do-code-review"]
 groups = ["design"]
 
@@ -176,9 +177,28 @@ Default behavior:
 - Path Skill Sources are also copied by default.
 - Direct Skill Source symlink mode is deferred from V1. This would mean pointing a Client Discovery Location directly at the original Skill Source directory instead of Managed Skill Content.
 
+Path resolution:
+
+- `[[skill_sources]].path` may be absolute or relative.
+- Relative paths resolve against the declaring config file's parent directory at discovery time.
+- Discovery runs from the resolved Skill Source directory (the directory tree root), not from process cwd.
+
+Discovery depth and traversal:
+
+- `[[skill_sources]].discovery_depth` is optional; default `4`, maximum `8`.
+- A **Skill** is a directory that directly contains `SKILL.md` (Agent Skill Format).
+- **Source Skill Name** is the skill directory's leaf name. Organizational subdirectories below the Skill Source root do not qualify the name.
+- Discovery walks the Skill Source tree up to `discovery_depth` path segments below the Skill Source root (the segment count to the skill directory containing `SKILL.md`).
+- Skip directory entries whose name starts with `.`.
+- Skip symlink directory entries below the Skill Source root in M2.1. The configured Skill Source root itself may be a symlink; symlink traversal inside sources is deferred until materialization rules in M3.
+- Nested-skill exclusion: when a directory contains `SKILL.md`, it is a **Skill**; do not scan its children for additional skills.
+- Duplicate **Source Skill Name** values at different paths within the same Skill Source are an error.
+- Missing Skill Source paths and non-directory Skill Source paths are distinct structured errors so CLI and doctor output can give different remediation.
+- An existing Skill Source directory with zero discovered skills is valid at discovery time; workflows may warn when selecting skills (see implementation plan M2.2).
+
 Skill Source metadata:
 
-- `skills.toml` inside a Skill Source is optional.
+- `skills.toml` at the Skill Source root is optional; do not read `skills.toml` from organizational subdirectories.
 - Skills in **Agent Skill Format** can be inferred from directories containing `SKILL.md`.
 - `skills.toml` may define Skill Source-local Skill Groups.
 

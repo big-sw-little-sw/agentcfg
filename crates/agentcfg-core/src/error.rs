@@ -124,8 +124,40 @@ pub enum ConfigError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SkillSourceError {
-    #[error("Skill Source `{skill_source_id}` was not found")]
-    NotFound { skill_source_id: String },
+    #[error(
+        "Skill Source `{skill_source_id}` was not found at `{configured_path}` (resolved to `{resolved_path}`)"
+    )]
+    NotFound {
+        skill_source_id: String,
+        configured_path: PathBuf,
+        resolved_path: PathBuf,
+    },
+
+    #[error(
+        "Skill Source `{skill_source_id}` is not a directory at `{configured_path}` (resolved to `{resolved_path}`)"
+    )]
+    NotDirectory {
+        skill_source_id: String,
+        configured_path: PathBuf,
+        resolved_path: PathBuf,
+    },
+
+    #[error(
+        "duplicate Source Skill Name `{source_skill_name}` in Skill Source `{skill_source_id}` at: {skill_dirs:?}"
+    )]
+    DuplicateSourceSkillName {
+        skill_source_id: String,
+        source_skill_name: String,
+        skill_dirs: Vec<PathBuf>,
+    },
+
+    #[error(
+        "non-UTF-8 Source Skill Name in directory `{skill_dir}` for Skill Source `{skill_source_id}`"
+    )]
+    NonUtf8SourceSkillName {
+        skill_source_id: String,
+        skill_dir: PathBuf,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -134,7 +166,9 @@ pub enum PathEnvironmentError {
     #[error("HOME is required to resolve the default for {xdg_var}; set HOME or {xdg_var}")]
     MissingHomeForXdgFallback { xdg_var: &'static str },
 
-    #[error("HOME must be an absolute path for Client Discovery Location resolution; set HOME to an absolute path")]
+    #[error(
+        "HOME must be an absolute path for Client Discovery Location resolution; set HOME to an absolute path"
+    )]
     HomeNotAbsolute,
 }
 
@@ -186,6 +220,22 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "missing required config field `scope` at agentcfg.toml for SharedProject"
+        );
+    }
+
+    #[test]
+    fn converts_and_displays_wrapped_skill_source_not_directory_error() {
+        let error: Error = SkillSourceError::NotDirectory {
+            skill_source_id: "personal".to_string(),
+            configured_path: PathBuf::from("../skills"),
+            resolved_path: PathBuf::from("/workspace/skills"),
+        }
+        .into();
+
+        assert!(matches!(error, Error::SkillSource(_)));
+        assert_eq!(
+            error.to_string(),
+            "Skill Source `personal` is not a directory at `../skills` (resolved to `/workspace/skills`)"
         );
     }
 
