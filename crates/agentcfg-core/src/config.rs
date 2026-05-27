@@ -388,10 +388,6 @@ groups = ["design"]
 clients = ["codex", "claude", "opencode"]
 "#;
 
-    /// Future **Discovery Name Collision** detection is not implemented in M1.5.4.
-    const DISCOVERY_NAME_COLLISION_NOT_YET_ENFORCED: &str =
-        "Discovery Name Collision detection is planned for a later milestone";
-
     #[test]
     fn skill_source_config_parses_path_source() {
         let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
@@ -419,14 +415,6 @@ clients = ["codex", "claude", "opencode"]
         assert_eq!(
             config.skill_aliases().get("personal:legacy-review"),
             Some(&"code-review".to_string())
-        );
-    }
-
-    #[test]
-    fn discovery_name_collision_is_documented_in_module() {
-        assert!(
-            !DISCOVERY_NAME_COLLISION_NOT_YET_ENFORCED.is_empty(),
-            "module documents that Discovery Name Collision detection is future work"
         );
     }
 

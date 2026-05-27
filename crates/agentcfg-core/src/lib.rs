@@ -2,7 +2,6 @@ mod discovery_registry;
 pub mod config;
 pub mod config_paths;
 pub mod desired_state;
-mod install_health;
 mod error;
 pub mod scope;
 pub mod workflow;

@@ -203,7 +203,7 @@ cargo test --workspace config_layer install_level
 Validation:
 
 ```sh
-cargo test --workspace discovery_registry discovery_requirement
+cargo test --workspace discovery_registry
 ```
 
 #### Task M1.5.4: Align skill source, selection, and managed content terms
@@ -235,7 +235,9 @@ cargo test --workspace skill_source skill_selection discovery_name source_refres
 Validation:
 
 ```sh
-cargo test --workspace desired_state lockfile manifest
+cargo test --workspace lockfile manifest
+cargo test --workspace
+rg 'GeneratedStatePaths|generated state' crates/ docs/prd.md docs/design-v1.md README.md
 ```
 
 #### Task M1.5.6: Align status, prune, and safety terminology
@@ -250,7 +252,9 @@ cargo test --workspace desired_state lockfile manifest
 Validation:
 
 ```sh
-cargo test --workspace status prune doctor
+cargo test --workspace
+rg 'UnmanagedInstalledArtifact|unmanaged installed artifact' crates/ docs/prd.md docs/design-v1.md README.md
+rg -i 'stale consumer|broken target' docs/prd.md docs/design-v1.md README.md
 ```
 
 #### Task M1.5.7: Update downstream milestone wording

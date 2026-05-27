@@ -411,18 +411,6 @@ mod tests {
     use crate::config::parse_config_str;
 
     #[test]
-    fn source_refresh_policy_refresh_sources_variant() {
-        assert_eq!(
-            SourceResolutionPolicy::RefreshSources,
-            SourceResolutionPolicy::RefreshSources
-        );
-        assert_ne!(
-            SourceResolutionPolicy::RefreshSources,
-            SourceResolutionPolicy::UseLocked
-        );
-    }
-
-    #[test]
     fn starter_configs_parse_for_all_layers() {
         for layer in [
             ConfigLayer::SharedProject,
