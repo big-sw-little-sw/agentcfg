@@ -67,11 +67,11 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
         }
         CliCommand::Preview(args) => WorkflowInvocation::Preview(PreviewRequest::new(
             install_level(args.user),
-            source_resolution_policy(args.upgrade),
+            source_resolution_policy(args.refresh_sources),
         )),
         CliCommand::Apply(args) => WorkflowInvocation::Apply(ApplyRequest::new(
             install_level(args.user),
-            source_resolution_policy(args.upgrade),
+            source_resolution_policy(args.refresh_sources),
         )),
         CliCommand::Prune(args) => {
             WorkflowInvocation::Prune(PruneRequest::new(install_level(args.user)))
@@ -101,8 +101,8 @@ fn install_level(user: bool) -> InstallLevel {
     }
 }
 
-fn source_resolution_policy(upgrade: bool) -> SourceResolutionPolicy {
-    if upgrade {
+fn source_resolution_policy(refresh_sources: bool) -> SourceResolutionPolicy {
+    if refresh_sources {
         SourceResolutionPolicy::RefreshSources
     } else {
         SourceResolutionPolicy::UseLocked
@@ -140,7 +140,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            invocation_for(["agentcfg", "preview", "--user", "--upgrade"]),
+            invocation_for(["agentcfg", "preview", "--user", "--refresh-sources"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallLevel::User,
                 SourceResolutionPolicy::RefreshSources,
@@ -158,9 +158,27 @@ mod tests {
             ))
         );
         assert_eq!(
-            invocation_for(["agentcfg", "apply", "--user", "--upgrade"]),
+            invocation_for(["agentcfg", "apply", "--user", "--refresh-sources"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallLevel::User,
+                SourceResolutionPolicy::RefreshSources,
+            ))
+        );
+    }
+
+    #[test]
+    fn source_refresh_flag_maps_to_refresh_sources_policy() {
+        assert_eq!(
+            invocation_for(["agentcfg", "preview", "--refresh-sources"]),
+            WorkflowInvocation::Preview(PreviewRequest::new(
+                InstallLevel::Project,
+                SourceResolutionPolicy::RefreshSources,
+            ))
+        );
+        assert_eq!(
+            invocation_for(["agentcfg", "apply", "--refresh-sources"]),
+            WorkflowInvocation::Apply(ApplyRequest::new(
+                InstallLevel::Project,
                 SourceResolutionPolicy::RefreshSources,
             ))
         );
