@@ -1,8 +1,8 @@
 # agentcfg
 
-`agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
+`agentcfg` is a CLI for managing Agent Configuration as repeatable desired state, starting with skills.
 
-It is designed to consume skills from filesystem or git sources, resolve them into **Locked Desired State** in **Managed State** (Manifest and Managed Skill Content under `.agentcfg/` or user state home), and install client-specific skill entrypoints safely at the Project Level and User Level.
+It is designed to consume skills from filesystem or git **Skill Sources**, resolve them into **Locked Desired State** in **Managed State** (Manifest and Managed Skill Content under `.agentcfg/` or user state home), and place **Installed Artifacts** safely at **Client Discovery Locations** for the Project Level and User Level.
 
 ## Status
 
@@ -10,21 +10,21 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 
 ## Goals
 
-- Keep the skill manager separate from skill repositories.
+- Keep Skill Configuration handling separate from Skill Sources.
 - Support skills in **Agent Skill Format** (`SKILL.md` directories).
 - Support path and git **Skill Sources**.
 - Provide repeatable `preview`, `apply`, and `prune` workflows.
-- Manage shared project, user project, and user-level configuration.
+- Manage Shared Project Config, User Project Config, and User Config.
 - Install only manifest-owned Installed Artifacts and prune conservatively.
-- Prefer portable skill paths where clients support them.
+- Prefer portable Client Discovery Locations where Clients support them.
 
 ## Non-goals for V1
 
 - Commands, workflows, rules, or MCP management.
-- Skill registry publishing.
+- External Skill catalog publishing.
 - Desktop UI.
 - Arbitrary org/team discovery layers.
-- A generic cross-agent configuration platform.
+- A generic platform for every agent-facing configuration type.
 
 ## Planned commands
 
@@ -37,15 +37,15 @@ agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes **Stale Installed Artifacts** and **Stale Discovery Requirements** from managed state only. `status` reports managed install-state consistency. `doctor` checks environment and configuration readiness.
+`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes **Stale Installed Artifacts** and **Stale Discovery Requirements** from Managed State only. `status` reports managed install-state consistency. `doctor` checks environment and configuration readiness.
 
-## Configuration Layers
+## Config Layers
 
-- `agentcfg.toml` / `agentcfg.lock` for shared project configuration.
-- `.agentcfg/config.toml` / `.agentcfg/lock.toml` for user project configuration.
-- `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml` / `lock.toml` for user configuration.
+- `agentcfg.toml` / `agentcfg.lock` for Shared Project Config.
+- `.agentcfg/config.toml` / `.agentcfg/lock.toml` for User Project Config.
+- `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml` / `lock.toml` for User Config.
 
-Project apply reads shared and user project config. User apply is separate and installs only to user-level Client Discovery Locations.
+Project Level apply reads Shared Project Config and User Project Config. User Level apply is separate and installs only to user-level Client Discovery Locations.
 
 ## Supported clients planned for V1
 
@@ -60,13 +60,13 @@ Project apply reads shared and user project config. User apply is separate and i
 
 ## Design notes
 
-V1 separates source acquisition from Client Discovery Location installation:
+V1 separates Skill Source resolution from Client Discovery Location installation:
 
 ```text
 Skill Source -> Managed Skill Content -> Client Discovery Location symlink
 ```
 
-This lets normal `apply` reinstall the locked version without depending on mutable path sources or floating git refs, while `apply --refresh-sources` performs **Source Refresh** to refresh Skill Source resolutions before applying Locked Desired State.
+This lets normal `apply` reinstall the locked version without depending on mutable path Skill Sources or floating git refs, while `apply --refresh-sources` performs **Source Refresh** to refresh Skill Source resolutions before applying Locked Desired State.
 
 Cleanup safety rules:
 

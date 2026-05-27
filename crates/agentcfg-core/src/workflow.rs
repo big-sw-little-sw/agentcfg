@@ -2,17 +2,17 @@
 //!
 //! Preview and apply orchestrate resolution of **Locked Desired State** into
 //! **Managed State** and **Client Discovery Locations**. V1 stubs return
-//! placeholder results until planning and apply are implemented.
+//! placeholder results until preview operation generation and apply are implemented.
 //!
 //! **Status** reports managed install-state consistency for an Install Level.
 //! **Doctor** reports environment and configuration readiness; it does not
 //! replace **Status** for install-state reporting.
 //!
 //! **Prune** removes **Stale Discovery Requirements** and **Stale Installed
-//! Artifacts** from managed state when removal is safe.
+//! Artifacts** from Managed State when removal is safe.
 //!
 //! These functions are orchestration boundaries, not the lower-level
-//! config, planning, apply, status, or diagnostic APIs. Those focused APIs
+//! config, preview operation, apply, status, or diagnostic APIs. Those focused APIs
 //! should be added when they are needed by implemented behavior.
 
 use std::env;
@@ -20,13 +20,12 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::discovery_registry::{
-    ClientDiscoveryLocation, project_client_discovery_locations,
-    user_client_discovery_locations,
-};
 use crate::config::parse_config_str;
 use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
-pub use crate::scope::{ConfigLayer, InstallLevel};
+use crate::discovery_registry::{
+    ClientDiscoveryLocation, project_client_discovery_locations, user_client_discovery_locations,
+};
+pub use crate::layer_level::{ConfigLayer, InstallLevel};
 use crate::{Error, InitError, Result};
 
 /// How preview/apply move from **Desired State** to **Locked Desired State** via lockfiles.
@@ -38,7 +37,7 @@ use crate::{Error, InitError, Result};
 /// - [`RefreshSources`]: perform **Source Refresh** to refresh Skill Source resolutions before
 ///   producing updated **Locked Desired State** and materializing **Managed Skill Content**.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SourceResolutionPolicy {
+pub enum SkillSourceResolutionPolicy {
     UseLocked,
     RefreshSources,
 }
@@ -66,7 +65,7 @@ pub struct InitResult {
 #[non_exhaustive]
 pub enum InitWarning {
     UnmanagedArtifact(UnmanagedArtifact),
-    DiscoveryLocationReadFailure(DiscoveryLocationReadFailure),
+    ClientDiscoveryLocationReadFailure(ClientDiscoveryLocationReadFailure),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -79,7 +78,7 @@ pub struct UnmanagedArtifact {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub struct DiscoveryLocationReadFailure {
+pub struct ClientDiscoveryLocationReadFailure {
     pub clients: Vec<&'static str>,
     pub install_level: InstallLevel,
     pub path: PathBuf,
@@ -88,22 +87,25 @@ pub struct DiscoveryLocationReadFailure {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct DiscoveryLocationInspection {
-    existing_artifacts: Vec<UnmanagedArtifact>,
-    read_failures: Vec<DiscoveryLocationReadFailure>,
+    unmanaged_artifacts: Vec<UnmanagedArtifact>,
+    read_failures: Vec<ClientDiscoveryLocationReadFailure>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub struct PreviewRequest {
     pub install_level: InstallLevel,
-    pub source_resolution: SourceResolutionPolicy,
+    pub skill_source_resolution: SkillSourceResolutionPolicy,
 }
 
 impl PreviewRequest {
-    pub fn new(install_level: InstallLevel, source_resolution: SourceResolutionPolicy) -> Self {
+    pub fn new(
+        install_level: InstallLevel,
+        skill_source_resolution: SkillSourceResolutionPolicy,
+    ) -> Self {
         Self {
             install_level,
-            source_resolution,
+            skill_source_resolution,
         }
     }
 }
@@ -116,14 +118,17 @@ pub struct PreviewResult {}
 #[non_exhaustive]
 pub struct ApplyRequest {
     pub install_level: InstallLevel,
-    pub source_resolution: SourceResolutionPolicy,
+    pub skill_source_resolution: SkillSourceResolutionPolicy,
 }
 
 impl ApplyRequest {
-    pub fn new(install_level: InstallLevel, source_resolution: SourceResolutionPolicy) -> Self {
+    pub fn new(
+        install_level: InstallLevel,
+        skill_source_resolution: SkillSourceResolutionPolicy,
+    ) -> Self {
         Self {
             install_level,
-            source_resolution,
+            skill_source_resolution,
         }
     }
 }
@@ -284,7 +289,7 @@ fn init_config_paths(layer: ConfigLayer, context: &WorkflowContext) -> Result<Co
 fn starter_config_contents(layer: ConfigLayer) -> String {
     format!(
         "scope = \"{}\"\n\n[skills]\nclients = \"all\"\n",
-        layer.persisted_scope()
+        layer.persisted_scope_value()
     )
 }
 
@@ -345,7 +350,7 @@ fn inspect_existing_discovery_locations(
     let mut inspection = DiscoveryLocationInspection::default();
     for location in locations {
         match scan_discovery_location(&location) {
-            Ok(artifacts) => inspection.existing_artifacts.extend(artifacts),
+            Ok(artifacts) => inspection.unmanaged_artifacts.extend(artifacts),
             Err(read_failure) => inspection.read_failures.push(read_failure),
         }
     }
@@ -357,10 +362,10 @@ fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarnin
     inspection
         .read_failures
         .into_iter()
-        .map(InitWarning::DiscoveryLocationReadFailure)
+        .map(InitWarning::ClientDiscoveryLocationReadFailure)
         .chain(
             inspection
-                .existing_artifacts
+                .unmanaged_artifacts
                 .into_iter()
                 .map(InitWarning::UnmanagedArtifact),
         )
@@ -369,7 +374,7 @@ fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarnin
 
 fn scan_discovery_location(
     location: &ClientDiscoveryLocation,
-) -> std::result::Result<Vec<UnmanagedArtifact>, DiscoveryLocationReadFailure> {
+) -> std::result::Result<Vec<UnmanagedArtifact>, ClientDiscoveryLocationReadFailure> {
     match location.path.try_exists() {
         Ok(false) => return Ok(Vec::new()),
         Ok(true) => {}
@@ -396,8 +401,8 @@ fn scan_discovery_location(
 fn scan_failure(
     location: &ClientDiscoveryLocation,
     source: std::io::Error,
-) -> DiscoveryLocationReadFailure {
-    DiscoveryLocationReadFailure {
+) -> ClientDiscoveryLocationReadFailure {
+    ClientDiscoveryLocationReadFailure {
         clients: location.clients.clone(),
         install_level: location.install_level,
         path: location.path.clone(),
@@ -559,7 +564,7 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::DiscoveryLocationReadFailure(read_failure)
+                InitWarning::ClientDiscoveryLocationReadFailure(read_failure)
                     if read_failure.path == agents_skills
                         && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
@@ -590,7 +595,7 @@ mod tests {
         assert!(
             result.warnings.iter().any(|warning| matches!(
                 warning,
-                InitWarning::DiscoveryLocationReadFailure(read_failure)
+                InitWarning::ClientDiscoveryLocationReadFailure(read_failure)
                     if read_failure.path == agents_skills
                         && read_failure.clients == ["codex", "cursor", "opencode", "pi"]
             )),
@@ -621,7 +626,7 @@ mod tests {
             .iter()
             .filter_map(|warning| match warning {
                 InitWarning::UnmanagedArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::DiscoveryLocationReadFailure(_) => None,
+                InitWarning::ClientDiscoveryLocationReadFailure(_) => None,
             })
             .collect()
     }
