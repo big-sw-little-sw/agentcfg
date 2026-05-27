@@ -30,10 +30,16 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 
 ## Terms
 
+- **Configured Item**: one kind of agent-facing thing managed by `agentcfg`. V1 has one Configured Item kind: **Skill**.
+- **Desired State**: the outcome active Config Layers ask `agentcfg` to make true, before source resolutions are fixed.
+- **Locked Desired State**: Desired State after source resolutions are fixed so `apply` can repeat the same result.
+- **Lockfile**: a user-visible file beside each Config Layer config that records **Locked Desired State** for Configured Items that need repeatable source resolution.
+- **Manifest**: an `agentcfg`-owned state file under **Managed State** that records **Installed Artifacts** and the **Discovery Requirements** that keep them present.
+- **Managed State**: `agentcfg`-owned state used to apply, inspect, and prune configuration safely, including the Manifest and **Managed Skill Content**.
 - **Client**: an agent application or CLI that discovers skills from filesystem paths, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
 - **Client Discovery Location**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
 - **Skill Source**: a filesystem path or git location containing skill directories in Agent Skill Format.
-- **Managed Skill Content**: generated copy of resolved skill content under `agentcfg` state. Client Discovery Locations point to this content so normal apply can install the locked version without depending on a mutable source path or moving git branch.
+- **Managed Skill Content**: `agentcfg`-owned skill files prepared from Locked Desired State under Managed State. Client Discovery Locations point to this content so normal apply can install the locked version without depending on a mutable source path or moving git branch.
 - **Skill Selection**: per-source `include` (selects **Included Skills**) and `groups` (selects **Skill Groups**).
 - **Skill Alias**: maps a Source Skill Name to a **Discovery Name**; may require Managed Skill Content frontmatter preparation.
 - **Discovery Name Collision**: two active layers resolve the same Discovery Name at the same Client Discovery Location with different content.
@@ -90,9 +96,9 @@ Command semantics:
 - `init`: create config for the selected config layer. Default creates user project config at `.agentcfg/config.toml`.
 - `init --project`: create shared project config at `agentcfg.toml`.
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
-- `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or Client Discovery Locations.
+- `preview`: strict read-only preview. No persistent writes to config, lockfiles, the Manifest, Managed State (including Managed Skill Content), Skill Sources, or Client Discovery Locations.
 - `preview --refresh-sources`: read-only preview after **Source Refresh** (refreshing Skill Source resolutions in memory). For git Skill Sources, this means checking whether floating refs moved. For path Skill Sources, this means checking whether source content changed.
-- `apply`: create missing lockfiles if needed, then install the locked resolved state.
+- `apply`: create missing lockfiles if needed, then install **Locked Desired State** into Managed State and Client Discovery Locations.
 - `apply --refresh-sources`: perform Source Refresh, update active lockfiles, materialize refreshed Managed Skill Content, then install.
 - `prune`: remove stale managed Installed Artifacts and stale Discovery Requirements. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.

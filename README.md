@@ -2,7 +2,7 @@
 
 `agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
 
-It is designed to consume skills from filesystem or git sources, resolve them into locked managed state, and install client-specific skill entrypoints safely at the Project Level and User Level.
+It is designed to consume skills from filesystem or git sources, resolve them into **Locked Desired State** in **Managed State** (Manifest and Managed Skill Content under `.agentcfg/` or user state home), and install client-specific skill entrypoints safely at the Project Level and User Level.
 
 ## Status
 
@@ -37,7 +37,7 @@ agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `apply` installs the locked desired state. `prune` removes stale manifest-owned Installed Artifacts only.
+`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes stale manifest-owned Installed Artifacts only.
 
 ## Configuration Layers
 

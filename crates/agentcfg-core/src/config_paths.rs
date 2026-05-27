@@ -1,4 +1,7 @@
-//! Path derivation for config files, lockfiles, and generated state.
+//! Path derivation for config files, lockfiles, and **Managed State**.
+//!
+//! Lockfiles sit beside Config Layer config files. **Managed State** paths include
+//! the Manifest and the Managed Skill Content root used when applying Locked Desired State.
 //!
 //! This module derives paths only. It does not create directories, read config
 //! contents, or mutate the filesystem.
@@ -61,15 +64,15 @@ impl ConfigFilePaths {
     }
 }
 
-/// Paths for generated install state, including **Managed Skill Content** derived from Skill Sources.
+/// Paths under **Managed State** for the Manifest and **Managed Skill Content** derived from Skill Sources.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GeneratedStatePaths {
+pub struct ManagedStatePaths {
     install_level: InstallLevel,
     manifest: PathBuf,
     managed_skill_content_root: PathBuf,
 }
 
-impl GeneratedStatePaths {
+impl ManagedStatePaths {
     pub fn for_project(project_root: impl AsRef<Path>) -> Self {
         let agentcfg_dir = project_root.as_ref().join(".agentcfg");
 
@@ -268,8 +271,8 @@ mod tests {
     }
 
     #[test]
-    fn managed_skill_content_paths_for_project_and_user() {
-        let project_paths = GeneratedStatePaths::for_project("/repo");
+    fn managed_state_paths_resolve_manifest_and_managed_skill_content() {
+        let project_paths = ManagedStatePaths::for_project("/repo");
 
         assert_eq!(project_paths.install_level(), InstallLevel::Project);
         assert_eq!(
@@ -281,7 +284,7 @@ mod tests {
             Path::new("/repo/.agentcfg/sources")
         );
 
-        let user_paths = GeneratedStatePaths::for_user_state_home("/home/me/.local/state");
+        let user_paths = ManagedStatePaths::for_user_state_home("/home/me/.local/state");
 
         assert_eq!(user_paths.install_level(), InstallLevel::User);
         assert_eq!(

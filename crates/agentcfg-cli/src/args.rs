@@ -13,10 +13,22 @@ pub(crate) enum CliCommand {
     #[command(about = "Create an agentcfg config file")]
     Init(InitArgs),
 
-    #[command(name = "preview", about = "Preview configured changes without writing them")]
+    #[command(
+        name = "preview",
+        about = "Preview configured changes without writing them",
+        long_about = "Read-only preview of changes Apply would make from Locked Desired State. \
+                      Never writes config, lockfiles, the Manifest, Managed State, Skill Sources, \
+                      or Client Discovery Locations."
+    )]
     Preview(PreviewArgs),
 
-    #[command(name = "apply", about = "Apply configured changes")]
+    #[command(
+        name = "apply",
+        about = "Apply Locked Desired State into Managed State and Client Discovery Locations",
+        long_about = "Apply Locked Desired State from active Config Layers into Managed State \
+                      (including Managed Skill Content) and Client Discovery Locations. \
+                      Creates missing lockfiles when needed. Never writes back to Skill Sources."
+    )]
     Apply(ApplyArgs),
 
     #[command(about = "Remove stale managed installed artifacts")]
