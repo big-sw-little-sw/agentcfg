@@ -1,4 +1,4 @@
-mod client_targets;
+mod discovery_registry;
 pub mod config;
 pub mod config_paths;
 mod error;

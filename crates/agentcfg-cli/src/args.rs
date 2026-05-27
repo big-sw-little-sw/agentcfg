@@ -19,7 +19,7 @@ pub(crate) enum CliCommand {
     #[command(name = "apply", about = "Apply configured changes")]
     Apply(ApplyArgs),
 
-    #[command(about = "Remove stale managed artifacts")]
+    #[command(about = "Remove stale managed installed artifacts")]
     Prune(InstallLevelArgs),
 
     #[command(about = "Show managed install state")]

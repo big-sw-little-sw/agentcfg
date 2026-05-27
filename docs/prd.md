@@ -31,12 +31,13 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 ## Terms
 
 - **Client**: an agent application or CLI that discovers skills from filesystem paths, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
-- **Target**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
+- **Client Discovery Location**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
 - **Source**: a filesystem path or git location containing skill directories.
-- **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Targets point to this tree so normal apply can install the locked version without depending on a mutable source path or moving git branch.
+- **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Client Discovery Locations point to this tree so normal apply can install the locked version without depending on a mutable source path or moving git branch.
 - **Config layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
 - **Install level**: whether a command installs or inspects at Project Level or User Level.
-- **Consumer**: a `{scope, client}` pair recorded in the manifest to say which config/client consumes an installed target artifact. A shared target can be pruned only when it has no remaining consumers.
+- **Discovery Requirement**: a manifest record keyed by Config Layer, Client, and Install Level that says which layer/client requires an Installed Artifact. A shared Client Discovery Location can be pruned only when it has no remaining Discovery Requirements.
+- **Installed Artifact**: a manifest-owned skill entry at a Client Discovery Location (symlink or copy to managed content).
 - **Client selector**: an optional CLI filter that narrows a command at a given Install Level to one or more configured clients.
 
 ## Config Types
@@ -45,11 +46,11 @@ V1 has three user-facing config types:
 
 - **Shared project config**: `agentcfg.toml` at the repo root. This is committed when a repo intentionally wants common agent skills for everyone working in that project. Its lockfile is `agentcfg.lock`.
 - **User project config**: `.agentcfg/config.toml` inside a repo. This is for one user's additions in that specific project and should stay uncommitted with the rest of `.agentcfg/`. Its lockfile is `.agentcfg/lock.toml`.
-- **User config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one user's skills across projects and applies only to user-level client targets. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
+- **User config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one user's skills across projects and applies only to user-level Client Discovery Locations. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
 
 Project apply reads shared project config plus user project config. User config is applied separately with `agentcfg apply --user`; it is not merged into project apply.
 
-Rationale: agent clients already define how user-level and project-level skills are combined at runtime. `agentcfg` should install user config to user targets and project config to project targets, then let each client apply its own merge and precedence rules. This avoids duplicating user skills into every project and avoids second-guessing client-specific behavior.
+Rationale: agent clients already define how user-level and project-level skills are combined at runtime. `agentcfg` should install user config to user-level Client Discovery Locations and project config to project-level Client Discovery Locations, then let each client apply its own merge and precedence rules. This avoids duplicating user skills into every project and avoids second-guessing client-specific behavior.
 
 ## Commands
 
@@ -86,14 +87,14 @@ Command semantics:
 - `init`: create config for the selected config layer. Default creates user project config at `.agentcfg/config.toml`.
 - `init --project`: create shared project config at `agentcfg.toml`.
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
-- `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or targets.
+- `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or Client Discovery Locations.
 - `preview --upgrade`: read-only preview after refreshing source resolutions in memory. For git sources, this means checking whether floating refs moved. For path sources, this means checking whether source content changed.
 - `apply`: create missing lockfiles if needed, then install the locked resolved state.
 - `apply --upgrade`: refresh source resolutions, update active lockfiles, materialize refreshed managed source trees, then install.
-- `prune`: remove stale managed artifacts and stale consumers. It applies by default because `preview` is the read-only workflow command.
+- `prune`: remove stale managed Installed Artifacts and stale Discovery Requirements. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
-- `--user` on `init`: create User Config. `--user` on `preview`, `apply`, `prune`, and `status`: run at User Level (user Install Level) using User Config and user-level targets. Not used for `doctor`, which is diagnostic.
+- `--user` on `init`: create User Config. `--user` on `preview`, `apply`, `prune`, and `status`: run at User Level (user Install Level) using User Config and user-level Client Discovery Locations. Not used for `doctor`, which is diagnostic.
 - `--client <client>`: narrow `preview`, `apply`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
 ## User Workflows
@@ -144,18 +145,18 @@ agentcfg prune
 - source resolutions
 - skills to create
 - skills to update
-- consumer additions
-- stale consumer removals
-- stale artifact removals
+- Discovery Requirement additions
+- stale Discovery Requirement removals
+- stale Installed Artifact removals
 - alias rewrites
-- warnings for uncertain client targets
+- warnings for uncertain Client Discovery Locations
 
 `apply` applies:
 
 - missing lockfile creation
-- target creates
-- target updates
-- consumer additions
+- Client Discovery Location creates
+- Client Discovery Location updates
+- Discovery Requirement additions
 
 `apply` does not remove stale artifacts. If stale artifacts remain, it warns:
 
@@ -167,8 +168,8 @@ Run: agentcfg prune
 
 `prune` applies:
 
-- stale consumer removals
-- stale managed artifact removals
+- stale Discovery Requirement removals
+- stale managed Installed Artifact removals
 
 Cleanup safety invariants:
 
@@ -183,7 +184,7 @@ Default policy:
 
 - Prefer portable shared paths where officially supported.
 - Use client-native paths when there is no portable path.
-- Disable uncertain targets by default.
+- Disable uncertain Client Discovery Locations by default.
 
 V1 recommended built-ins:
 
@@ -206,7 +207,7 @@ Known native alternatives are design details covered in [design-v1.md](design-v1
 Is the current managed install state consistent?
 ```
 
-It should report installed managed artifacts, broken symlinks, unexpected symlink targets, missing managed sources, stale managed artifacts, config/lock mismatch, manifest readability, and informational unmanaged artifacts in configured target directories.
+It should report installed managed Installed Artifacts, broken symlinks, unexpected symlink targets, missing managed sources, stale managed Installed Artifacts, config/lock mismatch, manifest readability, and informational unmanaged artifacts in configured Client Discovery Locations.
 
 `doctor` answers:
 
@@ -214,7 +215,7 @@ It should report installed managed artifacts, broken symlinks, unexpected symlin
 Is my environment/config/tooling capable of working?
 ```
 
-It should check git availability, repo root detection, supported clients, path writability, config schema validity, optional network/source checks, target confidence warnings, and unmanaged artifacts only when they block planned target paths.
+It should check git availability, repo root detection, supported clients, path writability, config schema validity, optional network/source checks, Client Discovery Location confidence warnings, and unmanaged artifacts only when they block planned Client Discovery Location paths.
 
 ## MVP Acceptance Criteria
 
@@ -228,10 +229,10 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg prune` removes only manifest-owned stale artifacts.
 - Alias collision handling is tested.
 - Internal symlink materialization and external symlink rejection are tested.
-- Shared `.agents/skills` consumers across Codex/Pi/OpenCode/Cursor are tested.
+- Shared `.agents/skills` Discovery Requirements across Codex/Pi/OpenCode/Cursor are tested.
 
 ## Open Product Questions
 
 - Whether git sources are in the first implementation slice or come after path sources - Answered: YES
-- How much source provenance to expose for client target registry decisions.
+- How much source provenance to expose for Client Discovery Registry decisions.
 - Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` source layouts should be accepted in V1.
