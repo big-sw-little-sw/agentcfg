@@ -2,7 +2,7 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "agentcfg")]
-#[command(about = "Manage agent configuration as repeatable desired state")]
+#[command(about = "Manage Agent Configuration as repeatable desired state")]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub(crate) command: CliCommand,
@@ -32,7 +32,7 @@ pub(crate) enum CliCommand {
     Apply(ApplyArgs),
 
     #[command(
-        about = "Remove Stale Installed Artifacts and Stale Discovery Requirements from managed state"
+        about = "Remove Stale Installed Artifacts and Stale Discovery Requirements from Managed State"
     )]
     Prune(InstallLevelArgs),
 

@@ -5,7 +5,7 @@
 //! and **Skill Aliases** that map a Source Skill Name to a **Discovery Name**.
 //!
 //! This module owns the persisted TOML shape and returns validated domain models
-//! so workflow and source-resolution code do not need to inspect raw config tables.
+//! so workflow and Skill Source resolution code do not need to inspect raw config tables.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::scope::ConfigLayer;
+use crate::layer_level::ConfigLayer;
 use crate::{ConfigError, Error, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
     layer: ConfigLayer,
-    sources: Vec<SkillSourceConfig>,
+    skill_sources: Vec<SkillSourceConfig>,
     skill_aliases: BTreeMap<String, String>,
     skills: SkillsConfig,
 }
@@ -29,8 +29,8 @@ impl Config {
         self.layer
     }
 
-    pub fn sources(&self) -> &[SkillSourceConfig] {
-        &self.sources
+    pub fn skill_sources(&self) -> &[SkillSourceConfig] {
+        &self.skill_sources
     }
 
     pub fn skill_aliases(&self) -> &BTreeMap<String, String> {
@@ -45,9 +45,9 @@ impl Config {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SkillSourceConfig {
     id: String,
-    source: SkillSourceKind,
-    include: Vec<String>,
-    groups: Vec<String>,
+    kind: SkillSourceKind,
+    included_skill_names: Vec<String>,
+    skill_group_names: Vec<String>,
 }
 
 impl SkillSourceConfig {
@@ -55,16 +55,16 @@ impl SkillSourceConfig {
         &self.id
     }
 
-    pub fn source(&self) -> &SkillSourceKind {
-        &self.source
+    pub fn kind(&self) -> &SkillSourceKind {
+        &self.kind
     }
 
-    pub fn include(&self) -> &[String] {
-        &self.include
+    pub fn included_skill_names(&self) -> &[String] {
+        &self.included_skill_names
     }
 
-    pub fn groups(&self) -> &[String] {
-        &self.groups
+    pub fn skill_group_names(&self) -> &[String] {
+        &self.skill_group_names
     }
 }
 
@@ -115,22 +115,22 @@ pub fn load_config(layer: ConfigLayer, path: impl AsRef<Path>) -> Result<Config>
 }
 
 fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<Config> {
-    let scope = raw
+    let persisted_scope_value = raw
         .scope
         .ok_or_else(|| missing_field(&path, layer, "scope"))?;
 
-    if scope != layer.persisted_scope() {
-        return Err(ConfigError::ScopeMismatch {
+    if persisted_scope_value != layer.persisted_scope_value() {
+        return Err(ConfigError::PersistedScopeValueMismatch {
             path,
             expected_layer: layer,
-            expected_scope: layer.persisted_scope(),
-            actual_scope: scope,
+            expected_persisted_scope_value: layer.persisted_scope_value(),
+            actual_persisted_scope_value: persisted_scope_value,
         }
         .into());
     }
 
-    let sources = validate_sources(&path, layer, raw.skill_sources)?;
-    let skill_aliases = validate_skill_aliases(&path, layer, raw.skill_aliases, &sources)?;
+    let skill_sources = validate_skill_sources(&path, layer, raw.skill_sources)?;
+    let skill_aliases = validate_skill_aliases(&path, layer, raw.skill_aliases, &skill_sources)?;
 
     let skills = validate_skills(
         &path,
@@ -141,37 +141,37 @@ fn validate_config(layer: ConfigLayer, path: PathBuf, raw: RawConfig) -> Result<
 
     Ok(Config {
         layer,
-        sources,
+        skill_sources,
         skill_aliases,
         skills,
     })
 }
 
-fn validate_sources(
+fn validate_skill_sources(
     path: &Path,
     layer: ConfigLayer,
-    raw_sources: Vec<RawSkillSource>,
+    raw_skill_sources: Vec<RawSkillSource>,
 ) -> Result<Vec<SkillSourceConfig>> {
     let mut ids = BTreeSet::new();
-    let mut sources = Vec::with_capacity(raw_sources.len());
+    let mut skill_sources = Vec::with_capacity(raw_skill_sources.len());
 
-    for raw_source in raw_sources {
-        let source = validate_source(path, layer, raw_source)?;
-        if !ids.insert(source.id.clone()) {
-            return Err(ConfigError::DuplicateSourceId {
+    for raw_skill_source in raw_skill_sources {
+        let skill_source = validate_skill_source(path, layer, raw_skill_source)?;
+        if !ids.insert(skill_source.id.clone()) {
+            return Err(ConfigError::DuplicateSkillSourceId {
                 path: path.to_path_buf(),
                 layer,
-                source_id: source.id,
+                skill_source_id: skill_source.id,
             }
             .into());
         }
-        sources.push(source);
+        skill_sources.push(skill_source);
     }
 
-    Ok(sources)
+    Ok(skill_sources)
 }
 
-fn validate_source(
+fn validate_skill_source(
     path: &Path,
     layer: ConfigLayer,
     raw: RawSkillSource,
@@ -198,7 +198,7 @@ fn validate_source(
         .kind
         .ok_or_else(|| missing_field(path, layer, "skill_sources[].type"))?;
 
-    let source = match kind.as_str() {
+    let skill_source_kind = match kind.as_str() {
         "path" => {
             let source_path = raw
                 .path
@@ -206,24 +206,26 @@ fn validate_source(
             SkillSourceKind::Path { path: source_path }
         }
         _ => {
-            return Err(ConfigError::UnsupportedSourceKind {
+            return Err(ConfigError::UnsupportedSkillSourceKind {
                 path: path.to_path_buf(),
                 layer,
-                source_id: Some(id),
+                skill_source_id: Some(id),
                 kind,
             }
             .into());
         }
     };
 
-    let include = validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
-    let groups = validate_optional_list(path, layer, "skill_sources[].groups", raw.groups)?;
+    let included_skill_names =
+        validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
+    let skill_group_names =
+        validate_optional_list(path, layer, "skill_sources[].groups", raw.groups)?;
 
     Ok(SkillSourceConfig {
         id,
-        source,
-        include,
-        groups,
+        kind: skill_source_kind,
+        included_skill_names,
+        skill_group_names,
     })
 }
 
@@ -244,38 +246,38 @@ fn validate_skill_aliases(
     path: &Path,
     layer: ConfigLayer,
     raw_aliases: BTreeMap<String, String>,
-    sources: &[SkillSourceConfig],
+    skill_sources: &[SkillSourceConfig],
 ) -> Result<BTreeMap<String, String>> {
-    let source_ids = sources
+    let skill_source_ids = skill_sources
         .iter()
-        .map(|source| source.id())
+        .map(|skill_source| skill_source.id())
         .collect::<BTreeSet<_>>();
 
-    for (source_skill, discovery_name) in &raw_aliases {
-        let Some((source_id, skill_name)) = source_skill.split_once(':') else {
-            return Err(ConfigError::InvalidAliasKey {
+    for (skill_alias_key, discovery_name) in &raw_aliases {
+        let Some((skill_source_id, source_skill_name)) = skill_alias_key.split_once(':') else {
+            return Err(ConfigError::InvalidSkillAliasKey {
                 path: path.to_path_buf(),
                 layer,
-                alias_key: source_skill.clone(),
+                skill_alias_key: skill_alias_key.clone(),
             }
             .into());
         };
 
-        if source_id.trim().is_empty() || skill_name.trim().is_empty() {
-            return Err(ConfigError::InvalidAliasKey {
+        if skill_source_id.trim().is_empty() || source_skill_name.trim().is_empty() {
+            return Err(ConfigError::InvalidSkillAliasKey {
                 path: path.to_path_buf(),
                 layer,
-                alias_key: source_skill.clone(),
+                skill_alias_key: skill_alias_key.clone(),
             }
             .into());
         }
 
-        if !source_ids.contains(source_id) {
-            return Err(ConfigError::UnknownAliasSource {
+        if !skill_source_ids.contains(skill_source_id) {
+            return Err(ConfigError::UnknownSkillAliasSkillSource {
                 path: path.to_path_buf(),
                 layer,
-                alias_key: source_skill.clone(),
-                source_id: source_id.to_string(),
+                skill_alias_key: skill_alias_key.clone(),
+                skill_source_id: skill_source_id.to_string(),
             }
             .into());
         }
@@ -373,7 +375,7 @@ mod tests {
     use crate::config_paths::ConfigFilePaths;
     use std::io::Write;
 
-    const VALID_SOURCE: &str = r#"
+    const VALID_SKILL_SOURCE_CONFIG: &str = r#"
 [[skill_sources]]
 id = "personal"
 type = "path"
@@ -389,13 +391,13 @@ clients = ["codex", "claude", "opencode"]
 "#;
 
     #[test]
-    fn skill_source_config_parses_path_source() {
+    fn skill_source_config_parses_path_skill_source() {
         let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
 
-        let source = &config.sources()[0];
-        assert_eq!(source.id(), "personal");
+        let skill_source = &config.skill_sources()[0];
+        assert_eq!(skill_source.id(), "personal");
         assert!(matches!(
-            source.source(),
+            skill_source.kind(),
             SkillSourceKind::Path { path } if path == Path::new("../skills")
         ));
     }
@@ -404,8 +406,11 @@ clients = ["codex", "claude", "opencode"]
     fn skill_selection_include_and_groups_are_preserved() {
         let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
 
-        assert_eq!(config.sources()[0].include(), ["do-code-review"]);
-        assert_eq!(config.sources()[0].groups(), ["design"]);
+        assert_eq!(
+            config.skill_sources()[0].included_skill_names(),
+            ["do-code-review"]
+        );
+        assert_eq!(config.skill_sources()[0].skill_group_names(), ["design"]);
     }
 
     #[test]
@@ -423,16 +428,19 @@ clients = ["codex", "claude", "opencode"]
         let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
 
         assert_eq!(config.layer(), ConfigLayer::SharedProject);
-        assert_eq!(config.sources().len(), 1);
-        assert_eq!(config.sources()[0].id(), "personal");
+        assert_eq!(config.skill_sources().len(), 1);
+        assert_eq!(config.skill_sources()[0].id(), "personal");
         assert_eq!(
-            config.sources()[0].source(),
+            config.skill_sources()[0].kind(),
             &SkillSourceKind::Path {
                 path: PathBuf::from("../skills")
             }
         );
-        assert_eq!(config.sources()[0].include(), ["do-code-review"]);
-        assert_eq!(config.sources()[0].groups(), ["design"]);
+        assert_eq!(
+            config.skill_sources()[0].included_skill_names(),
+            ["do-code-review"]
+        );
+        assert_eq!(config.skill_sources()[0].skill_group_names(), ["design"]);
         assert_eq!(
             config.skill_aliases().get("personal:legacy-review"),
             Some(&"code-review".to_string())
@@ -472,7 +480,7 @@ clients = ["codex", "claude", "opencode"]
     }
 
     #[test]
-    fn rejects_scope_mismatch() {
+    fn rejects_persisted_scope_value_mismatch() {
         let error = parse_config_str(
             ConfigLayer::User,
             "user.toml",
@@ -482,24 +490,25 @@ clients = ["codex", "claude", "opencode"]
 
         assert!(matches!(
             error,
-            Error::Config(ConfigError::ScopeMismatch {
+            Error::Config(ConfigError::PersistedScopeValueMismatch {
                 expected_layer: ConfigLayer::User,
-                expected_scope: "user",
-                ref actual_scope,
+                expected_persisted_scope_value: "user",
+                ref actual_persisted_scope_value,
                 ..
-            }) if actual_scope == "shared-project"
+            }) if actual_persisted_scope_value == "shared-project"
         ));
     }
 
     #[test]
     fn rejects_missing_top_level_scope() {
-        let error = parse_config_str(ConfigLayer::User, "user.toml", VALID_SOURCE).unwrap_err();
+        let error = parse_config_str(ConfigLayer::User, "user.toml", VALID_SKILL_SOURCE_CONFIG)
+            .unwrap_err();
 
         assert_missing_field(error, "scope");
     }
 
     #[test]
-    fn rejects_missing_source_id() {
+    fn rejects_missing_skill_source_id() {
         let contents = r#"
 scope = "user"
 
@@ -517,7 +526,7 @@ clients = ["codex"]
     }
 
     #[test]
-    fn rejects_empty_source_id() {
+    fn rejects_empty_skill_source_id() {
         let contents = r#"
 scope = "user"
 
@@ -536,7 +545,7 @@ clients = ["codex"]
     }
 
     #[test]
-    fn rejects_duplicate_source_ids_after_trimming() {
+    fn rejects_duplicate_skill_source_ids_after_trimming() {
         let contents = r#"
 scope = "user"
 
@@ -558,15 +567,15 @@ clients = ["codex"]
 
         assert!(matches!(
             error,
-            Error::Config(ConfigError::DuplicateSourceId {
-                source_id,
+            Error::Config(ConfigError::DuplicateSkillSourceId {
+                skill_source_id,
                 ..
-            }) if source_id == "personal"
+            }) if skill_source_id == "personal"
         ));
     }
 
     #[test]
-    fn parses_omitted_source_selection_as_empty_lists() {
+    fn parses_omitted_skill_selection_as_empty_lists() {
         let contents = r#"
 scope = "user"
 
@@ -581,12 +590,12 @@ clients = ["codex"]
 
         let config = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap();
 
-        assert!(config.sources()[0].include().is_empty());
-        assert!(config.sources()[0].groups().is_empty());
+        assert!(config.skill_sources()[0].included_skill_names().is_empty());
+        assert!(config.skill_sources()[0].skill_group_names().is_empty());
     }
 
     #[test]
-    fn rejects_explicit_empty_source_include() {
+    fn rejects_explicit_empty_included_skills() {
         let contents = r#"
 scope = "user"
 
@@ -606,7 +615,7 @@ clients = ["codex"]
     }
 
     #[test]
-    fn rejects_explicit_empty_source_groups() {
+    fn rejects_explicit_empty_skill_groups() {
         let contents = r#"
 scope = "user"
 
@@ -646,15 +655,15 @@ clients = ["codex"]
 
         assert!(matches!(
             error,
-            Error::Config(ConfigError::InvalidAliasKey {
-                alias_key,
+            Error::Config(ConfigError::InvalidSkillAliasKey {
+                skill_alias_key,
                 ..
-            }) if alias_key == "legacy-review"
+            }) if skill_alias_key == "legacy-review"
         ));
     }
 
     #[test]
-    fn rejects_skill_alias_for_unknown_source() {
+    fn rejects_skill_alias_for_unknown_skill_source() {
         let contents = r#"
 scope = "user"
 
@@ -674,16 +683,16 @@ clients = ["codex"]
 
         assert!(matches!(
             error,
-            Error::Config(ConfigError::UnknownAliasSource {
-                alias_key,
-                source_id,
+            Error::Config(ConfigError::UnknownSkillAliasSkillSource {
+                skill_alias_key,
+                skill_source_id,
                 ..
-            }) if alias_key == "community:legacy-review" && source_id == "community"
+            }) if skill_alias_key == "community:legacy-review" && skill_source_id == "community"
         ));
     }
 
     #[test]
-    fn rejects_empty_skill_alias_target() {
+    fn rejects_empty_skill_alias_discovery_name() {
         let contents = r#"
 scope = "user"
 
@@ -762,7 +771,7 @@ clients = "all"
     }
 
     #[test]
-    fn rejects_unsupported_source_exclude() {
+    fn rejects_unsupported_skill_source_exclude() {
         let contents = r#"
 scope = "user"
 
@@ -788,7 +797,7 @@ clients = ["codex"]
     }
 
     #[test]
-    fn rejects_unsupported_source_kind_before_git_sources_exist() {
+    fn rejects_unsupported_skill_source_kind_before_git_sources_exist() {
         let contents = r#"
 scope = "user"
 
@@ -805,16 +814,16 @@ clients = ["codex"]
 
         assert!(matches!(
             &error,
-            Error::Config(ConfigError::UnsupportedSourceKind {
-                source_id: Some(source_id),
+            Error::Config(ConfigError::UnsupportedSkillSourceKind {
+                skill_source_id: Some(skill_source_id),
                 kind,
                 ..
-            }) if source_id == "personal" && kind == "git"
+            }) if skill_source_id == "personal" && kind == "git"
         ));
         assert!(
             error
                 .to_string()
-                .contains("git source support is planned for a later phase")
+                .contains("git Skill Source support is planned for a later phase")
         );
     }
 
@@ -830,15 +839,20 @@ clients = ["codex"]
         let config = load_config(paths.layer(), paths.config_file()).unwrap();
 
         assert_eq!(config.layer(), ConfigLayer::SharedProject);
-        assert_eq!(config.sources()[0].id(), "personal");
+        assert_eq!(config.skill_sources()[0].id(), "personal");
     }
 
-    fn parse_layer_config(layer: ConfigLayer, scope: &str) -> Config {
-        parse_config_str(layer, "agentcfg.toml", &config_contents(scope)).unwrap()
+    fn parse_layer_config(layer: ConfigLayer, persisted_scope_value: &str) -> Config {
+        parse_config_str(
+            layer,
+            "agentcfg.toml",
+            &config_contents(persisted_scope_value),
+        )
+        .unwrap()
     }
 
-    fn config_contents(scope: &str) -> String {
-        format!("scope = \"{scope}\"\n{VALID_SOURCE}")
+    fn config_contents(persisted_scope_value: &str) -> String {
+        format!("scope = \"{persisted_scope_value}\"\n{VALID_SKILL_SOURCE_CONFIG}")
     }
 
     fn assert_missing_field(error: Error, expected_field: &'static str) {
