@@ -44,9 +44,15 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Skill Alias**: maps a Source Skill Name to a **Discovery Name**; may require Managed Skill Content frontmatter preparation.
 - **Discovery Name Collision**: two active layers resolve the same Discovery Name at the same Client Discovery Location with different content.
 - **Config layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
-- **Install level**: whether a command installs or inspects at Project Level or User Level.
+- **Install level**: whether a command installs or reports at Project Level or User Level.
 - **Discovery Requirement**: a manifest record keyed by Config Layer, Client, and Install Level that says which layer/client requires an Installed Artifact. A shared Client Discovery Location can be pruned only when it has no remaining Discovery Requirements.
 - **Installed Artifact**: a manifest-owned skill entry at a Client Discovery Location (symlink or copy to managed content).
+- **Unmanaged Artifact**: a filesystem entry at a Client Discovery Location that is not recorded in the Manifest as owned by `agentcfg`.
+- **Stale Discovery Requirement**: a Discovery Requirement recorded in the Manifest that is no longer present in Desired State.
+- **Unsatisfied Discovery Requirement**: a Discovery Requirement in Desired State that does not currently have a valid Installed Artifact.
+- **Stale Installed Artifact**: an Installed Artifact recorded in the Manifest that has no remaining Discovery Requirements.
+- **Unexpected Symlink Target**: a symlink destination that differs from the destination recorded in the Manifest for an Installed Artifact.
+- **Broken Symlink**: an Installed Artifact symlink whose destination does not exist.
 - **Client selector**: an optional CLI filter that narrows a command at a given Install Level to one or more configured clients.
 
 ## Config Types
@@ -100,9 +106,9 @@ Command semantics:
 - `preview --refresh-sources`: read-only preview after **Source Refresh** (refreshing Skill Source resolutions in memory). For git Skill Sources, this means checking whether floating refs moved. For path Skill Sources, this means checking whether source content changed.
 - `apply`: create missing lockfiles if needed, then install **Locked Desired State** into Managed State and Client Discovery Locations.
 - `apply --refresh-sources`: perform Source Refresh, update active lockfiles, materialize refreshed Managed Skill Content, then install.
-- `prune`: remove stale managed Installed Artifacts and stale Discovery Requirements. It applies by default because `preview` is the read-only workflow command.
-- `status`: inspect current managed install state.
-- `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
+- `prune`: remove **Stale Installed Artifacts** and **Stale Discovery Requirements** from managed state. It applies by default because `preview` is the read-only workflow command.
+- `status`: report managed install-state consistency for the active Install Level.
+- `doctor`: check environment and configuration readiness (client support, config validity, path writability, and optional network/source issues). It does not report managed install-state consistency; use `status` for that.
 - `--user` on `init`: create User Config. `--user` on `preview`, `apply`, `prune`, and `status`: run at User Level (user Install Level) using User Config and user-level Client Discovery Locations. Not used for `doctor`, which is diagnostic.
 - `--client <client>`: narrow `preview`, `apply`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
@@ -139,7 +145,7 @@ agentcfg preview --refresh-sources
 agentcfg apply --refresh-sources
 ```
 
-Remove stale managed artifacts:
+Remove **Stale Installed Artifacts** and **Stale Discovery Requirements**:
 
 ```bash
 agentcfg preview
@@ -167,23 +173,23 @@ agentcfg prune
 - Client Discovery Location updates
 - Discovery Requirement additions
 
-`apply` does not remove stale artifacts. If stale artifacts remain, it warns:
+`apply` does not remove **Stale Installed Artifacts** or **Stale Discovery Requirements**. If stale managed state remains, it warns:
 
 ```text
-Stale managed artifacts remain: N
+Stale Installed Artifacts or Stale Discovery Requirements remain: N
 These may still be discovered by agent clients until pruned.
 Run: agentcfg prune
 ```
 
 `prune` applies:
 
-- stale Discovery Requirement removals
-- stale managed Installed Artifact removals
+- **Stale Discovery Requirement** removals
+- **Stale Installed Artifact** removals
 
 Cleanup safety invariants:
 
 - Remove only manifest-owned artifacts.
-- Refuse unexpected symlink targets.
+- Refuse **Unexpected Symlink Target** destinations.
 - Never delete unmanaged real files.
 - Delete directories only if empty and manifest-owned.
 
@@ -216,7 +222,7 @@ Known native alternatives are design details covered in [design-v1.md](design-v1
 Is the current managed install state consistent?
 ```
 
-It should report installed managed Installed Artifacts, broken symlinks, unexpected symlink targets, missing Managed Skill Content, stale managed Installed Artifacts, config/lock mismatch, manifest readability, and informational unmanaged artifacts in configured Client Discovery Locations.
+It should report installed managed Installed Artifacts, **Broken Symlinks**, **Unexpected Symlink Targets**, missing Managed Skill Content, **Stale Installed Artifacts**, **Unsatisfied Discovery Requirements**, config/lock mismatch, manifest readability, and informational **Unmanaged Artifacts** in configured Client Discovery Locations.
 
 `doctor` answers:
 
@@ -224,7 +230,7 @@ It should report installed managed Installed Artifacts, broken symlinks, unexpec
 Is my environment/config/tooling capable of working?
 ```
 
-It should check git availability, repo root detection, supported clients, path writability, config schema validity, optional network/source checks, Client Discovery Location confidence warnings, and unmanaged artifacts only when they block planned Client Discovery Location paths.
+It should check git availability, repo root detection, supported clients, path writability, config schema validity, optional network/source checks, Client Discovery Location confidence warnings, and **Unmanaged Artifacts** only when they block planned Client Discovery Location paths. It should not replace `status` for install-state consistency.
 
 ## MVP Acceptance Criteria
 
@@ -235,7 +241,7 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg preview` is read-only.
 - `agentcfg apply` resolves a path Skill Source, writes lockfile, materializes Managed Skill Content, and installs skill symlink.
 - `agentcfg apply --refresh-sources` performs Source Refresh for path Skill Source content and lockfile.
-- `agentcfg prune` removes only manifest-owned stale artifacts.
+- `agentcfg prune` removes only manifest-owned **Stale Installed Artifacts** and **Stale Discovery Requirements**.
 - Alias collision handling is tested.
 - Internal symlink materialization and external symlink rejection are tested.
 - Shared `.agents/skills` Discovery Requirements across Codex/Pi/OpenCode/Cursor are tested.

@@ -240,12 +240,12 @@ cargo test --workspace desired_state lockfile manifest
 
 #### Task M1.5.6: Align status, prune, and safety terminology
 
-- [ ] Use Unmanaged Artifact for filesystem entries at Client Discovery Locations that are not recorded in the Manifest.
-- [ ] Use Stale Discovery Requirement for Manifest requirements no longer present in Desired State.
-- [ ] Use Unsatisfied Discovery Requirement for Desired State requirements without a valid Installed Artifact.
-- [ ] Use Stale Installed Artifact for Manifest-recorded Installed Artifacts with no remaining Discovery Requirements.
-- [ ] Keep Unexpected Symlink Target and Broken Symlink scoped to filesystem symlink diagnostics, not client-target language.
-- [ ] Preserve Status as managed install-state consistency and Doctor as environment/configuration readiness.
+- [x] Use Unmanaged Artifact for filesystem entries at Client Discovery Locations that are not recorded in the Manifest.
+- [x] Use Stale Discovery Requirement for Manifest requirements no longer present in Desired State.
+- [x] Use Unsatisfied Discovery Requirement for Desired State requirements without a valid Installed Artifact.
+- [x] Use Stale Installed Artifact for Manifest-recorded Installed Artifacts with no remaining Discovery Requirements.
+- [x] Keep Unexpected Symlink Target and Broken Symlink scoped to filesystem symlink diagnostics, not client-target language.
+- [x] Preserve Status as managed install-state consistency and Doctor as environment/configuration readiness.
 
 Validation:
 
