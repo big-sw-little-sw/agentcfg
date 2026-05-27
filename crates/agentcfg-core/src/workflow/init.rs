@@ -1,256 +1,26 @@
-//! User workflow entrypoints for the CLI and future frontends.
-//!
-//! Preview and apply orchestrate resolution of **Locked Desired State** into
-//! **Managed State** and **Client Discovery Locations**. V1 stubs return
-//! placeholder results until preview operation generation and apply are implemented.
-//!
-//! **Status** reports managed install-state consistency for an Install Level.
-//! **Doctor** reports environment and configuration readiness; it does not
-//! replace **Status** for install-state reporting.
-//!
-//! **Prune** removes **Stale Discovery Requirements** and **Stale Installed
-//! Artifacts** from Managed State when removal is safe.
-//!
-//! These functions are orchestration boundaries, not the lower-level
-//! config, preview operation, apply, status, or diagnostic APIs. Those focused APIs
-//! should be added when they are needed by implemented behavior.
-
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::config::parse_config_str;
-use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
+use crate::config_paths::{ConfigFilePaths, discover_project_root};
 use crate::discovery_registry::{
     ClientDiscoveryLocation, project_client_discovery_locations, user_client_discovery_locations,
 };
-pub use crate::layer_level::{ConfigLayer, InstallLevel};
+use crate::layer_level::ConfigLayer;
 use crate::{Error, InitError, Result};
 
-/// How preview/apply move from **Desired State** to **Locked Desired State** via lockfiles.
-///
-/// Active Config Layers express **Desired State**; lockfiles record **Locked Desired State**
-/// for Configured Items that need repeatable Skill Source resolution.
-///
-/// - [`UseLocked`]: use **Locked Desired State** from the active lockfile without Source Refresh.
-/// - [`RefreshSources`]: perform **Source Refresh** to refresh Skill Source resolutions before
-///   producing updated **Locked Desired State** and materializing **Managed Skill Content**.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SkillSourceResolutionPolicy {
-    UseLocked,
-    RefreshSources,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitRequest {
-    pub config_layer: ConfigLayer,
-}
-
-impl InitRequest {
-    pub fn new(config_layer: ConfigLayer) -> Self {
-        Self { config_layer }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitResult {
-    pub config_file: PathBuf,
-    pub warnings: Vec<InitWarning>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum InitWarning {
-    UnmanagedArtifact(UnmanagedArtifact),
-    ClientDiscoveryLocationReadFailure(ClientDiscoveryLocationReadFailure),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct UnmanagedArtifact {
-    pub clients: Vec<&'static str>,
-    pub install_level: InstallLevel,
-    pub path: PathBuf,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ClientDiscoveryLocationReadFailure {
-    pub clients: Vec<&'static str>,
-    pub install_level: InstallLevel,
-    pub path: PathBuf,
-    pub error: String,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct DiscoveryLocationInspection {
-    unmanaged_artifacts: Vec<UnmanagedArtifact>,
-    read_failures: Vec<ClientDiscoveryLocationReadFailure>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PreviewRequest {
-    pub install_level: InstallLevel,
-    pub skill_source_resolution: SkillSourceResolutionPolicy,
-}
-
-impl PreviewRequest {
-    pub fn new(
-        install_level: InstallLevel,
-        skill_source_resolution: SkillSourceResolutionPolicy,
-    ) -> Self {
-        Self {
-            install_level,
-            skill_source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PreviewResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ApplyRequest {
-    pub install_level: InstallLevel,
-    pub skill_source_resolution: SkillSourceResolutionPolicy,
-}
-
-impl ApplyRequest {
-    pub fn new(
-        install_level: InstallLevel,
-        skill_source_resolution: SkillSourceResolutionPolicy,
-    ) -> Self {
-        Self {
-            install_level,
-            skill_source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ApplyResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneRequest {
-    pub install_level: InstallLevel,
-}
-
-impl PruneRequest {
-    pub fn new(install_level: InstallLevel) -> Self {
-        Self { install_level }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusRequest {
-    pub install_level: InstallLevel,
-}
-
-impl StatusRequest {
-    pub fn new(install_level: InstallLevel) -> Self {
-        Self { install_level }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusResult {}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorRequest {}
-
-impl DoctorRequest {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorResult {}
+use super::context::WorkflowContext;
+use super::types::{
+    ClientDiscoveryLocationReadFailure, InitRequest, InitResult, InitWarning, UnmanagedArtifact,
+};
 
 pub fn init(request: InitRequest) -> Result<InitResult> {
     let context = WorkflowContext::from_process()?;
     init_with_context(request, &context)
 }
 
-pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
-    Ok(PreviewResult {})
-}
-
-pub fn apply(_request: ApplyRequest) -> Result<ApplyResult> {
-    Ok(ApplyResult {})
-}
-
-pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
-    Ok(PruneResult {})
-}
-
-pub fn status(_request: StatusRequest) -> Result<StatusResult> {
-    Ok(StatusResult {})
-}
-
-pub fn doctor(_request: DoctorRequest) -> Result<DoctorResult> {
-    Ok(DoctorResult {})
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct WorkflowContext {
-    cwd: PathBuf,
-    xdg_config_home: Option<PathBuf>,
-    home_dir: Option<PathBuf>,
-}
-
-impl WorkflowContext {
-    fn from_process() -> Result<Self> {
-        let cwd = env::current_dir().map_err(|source| Error::Io {
-            path: PathBuf::from("."),
-            source,
-        })?;
-
-        Ok(Self::new(
-            cwd,
-            env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
-            env::var_os("HOME").map(PathBuf::from),
-        ))
-    }
-
-    fn new(
-        cwd: impl Into<PathBuf>,
-        xdg_config_home: Option<impl Into<PathBuf>>,
-        home_dir: Option<impl Into<PathBuf>>,
-    ) -> Self {
-        Self {
-            cwd: cwd.into(),
-            xdg_config_home: xdg_config_home.map(Into::into),
-            home_dir: home_dir.map(Into::into),
-        }
-    }
-
-    fn user_config_home(&self) -> Result<PathBuf> {
-        UserDirs::config_home_from_env_vars(self.xdg_config_home.clone(), self.home_dir.clone())
-    }
-
-    fn home_dir(&self) -> Option<&Path> {
-        self.home_dir.as_deref()
-    }
-}
-
-fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<InitResult> {
+pub(crate) fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<InitResult> {
     let config_paths = init_config_paths(request.config_layer, context)?;
     let contents = starter_config_contents(request.config_layer);
 
@@ -286,7 +56,7 @@ fn init_config_paths(layer: ConfigLayer, context: &WorkflowContext) -> Result<Co
     }
 }
 
-fn starter_config_contents(layer: ConfigLayer) -> String {
+pub(crate) fn starter_config_contents(layer: ConfigLayer) -> String {
     format!(
         "scope = \"{}\"\n\n[skills]\nclients = \"all\"\n",
         layer.persisted_scope_value()
@@ -326,6 +96,12 @@ fn create_config_file(path: &Path, layer: ConfigLayer, contents: &str) -> Result
             path: path.to_path_buf(),
             source,
         })
+}
+
+#[derive(Clone, Debug, Default)]
+struct DiscoveryLocationInspection {
+    unmanaged_artifacts: Vec<UnmanagedArtifact>,
+    read_failures: Vec<ClientDiscoveryLocationReadFailure>,
 }
 
 fn inspect_existing_discovery_locations(
@@ -412,8 +188,13 @@ fn scan_failure(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
     use super::*;
     use crate::config::parse_config_str;
+    use crate::layer_level::InstallLevel;
+    use crate::{Error, InitError};
 
     #[test]
     fn starter_configs_parse_for_all_layers() {

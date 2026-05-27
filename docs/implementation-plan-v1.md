@@ -1,6 +1,6 @@
 # agentcfg V1 Implementation Plan
 
-This document breaks V1 into implementation milestones. Product intent lives in [prd.md](prd.md); technical contracts live in [design-v1.md](design-v1.md). If this plan conflicts with `design-v1.md`, treat `design-v1.md` as authoritative and update the plan.
+This document breaks V1 into implementation milestones. Product intent lives in [prd.md](prd.md); technical contracts live in [design-v1.md](design-v1.md). If this plan conflicts with `design-v1.md`, stop and ask which source to follow for that change; do not assume one document wins over the other.
 
 The plan is optimized for agent execution. Each task should be small enough that an implementation agent has at least 90% confidence it can complete the task from this document, the PRD, and the design doc without needing another design discussion.
 
@@ -10,7 +10,8 @@ The plan is optimized for agent execution. Each task should be small enough that
 - Prefer tasks that produce a compiling, testable state.
 - Do not mix domain logic, persistence, filesystem mutation, and CLI rendering in one task unless the task is explicitly an end-to-end slice.
 - Add tests in the same task as the behavior unless the task is scaffolding only.
-- If a task exposes a hidden design decision, stop and update `design-v1.md` before implementing.
+- If a task exposes a hidden design decision, stop and ask or update `design-v1.md` before implementing.
+- If `design-v1.md` and this plan disagree on the same behavior, stop and ask; do not pick one silently.
 - Keep the core crate skill-first. Share preview/apply/status/prune around structured Desired State for Installed Artifacts, but do not introduce generic Configured Item manager traits, factories, or interfaces before a second Configured Item kind exists.
 - Treat CLI command handlers as adapters into core workflow APIs. As lower-level behavior is implemented, expose focused core APIs for config paths, config parsing, Skill Source resolution, Skill Selection, Desired State, preview operation generation, apply/prune safety, status, and doctor checks. The CLI should not orchestrate those lower-level steps directly.
 - If a future Configured Item-kind-specific CLI selector question appears during V1 work, record it in the post-V1 holding area in `design-v1.md` instead of expanding the V1 boundary.
@@ -268,6 +269,55 @@ Validation:
 ```sh
 rg <terminology-audit-patterns> docs/implementation-plan-v1.md
 ```
+
+### M1.6: Pre-M2 foundations
+
+Goal: stable contributor/agent onboarding, module seams for M2+, and honest CLI behavior before Skill Source discovery work.
+
+#### Task M1.6.1: Toolchain and agent docs
+
+- [x] Pin Rust in `rust-toolchain.toml`.
+- [x] Add stable [AGENTS.md](../AGENTS.md) (no milestone-specific status; point to README § Status).
+- [x] Symlink [CLAUDE.md](../CLAUDE.md) → `AGENTS.md`.
+- [x] Update [README.md](../README.md): implementation status table, concepts → code map, doc links.
+
+Validation:
+
+```sh
+rustup show active-toolchain
+test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+```
+
+#### Task M1.6.2: Core module seams and glossary anchors
+
+- [x] Split `workflow` into `init`, `context`, `types`, `stubs` submodules.
+- [x] Move `config` unit tests to `config/tests.rs`.
+- [x] Add anchor modules: `desired_state` (`ConfiguredItemKind`, `NamespacedSkillSourceId`), `lockfile`, `manifest`, `install_health`, `skill_source`.
+- [x] Glossary anchor tests: `desired_state_glossary_*`, `lockfile_glossary_*`, `manifest` / `discovery_requirement_*`, `install_health_glossary_*`.
+
+Validation:
+
+```sh
+cargo test --workspace desired_state lockfile manifest install_health discovery_requirement
+```
+
+#### Task M1.6.3: Honest workflow stubs
+
+- [x] `preview`, `apply`, `prune`, `status`, and `doctor` return `UnsupportedError::WorkflowNotImplemented` (exit 1 via CLI).
+- [x] CLI integration tests assert non-zero exit and message for at least `preview` and `apply`.
+
+Validation:
+
+```sh
+cargo test --workspace unimplemented_workflows preview_returns_workflow
+```
+
+#### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
+
+- [ ] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
+- [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
+- [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
+- [ ] Tighten init Unmanaged Artifact scan (skill-shaped entries; optional grouped warning format per `design-v1.md`) when touching init again.
 
 ### M2: Path Skill Sources and Skill Selection
 

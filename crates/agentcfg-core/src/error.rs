@@ -147,6 +147,9 @@ pub enum InitError {
 pub enum UnsupportedError {
     #[error("unsupported feature `{feature}`")]
     Feature { feature: &'static str },
+
+    #[error("{workflow} is not implemented yet")]
+    WorkflowNotImplemented { workflow: &'static str },
 }
 
 // Keep variants broad only while callers can handle the failures the same way.
@@ -198,6 +201,13 @@ mod tests {
             error.to_string(),
             "HOME is required to resolve the default for XDG_CONFIG_HOME; set HOME or XDG_CONFIG_HOME"
         );
+    }
+
+    #[test]
+    fn displays_workflow_not_implemented() {
+        let error: Error = UnsupportedError::WorkflowNotImplemented { workflow: "preview" }.into();
+
+        assert_eq!(error.to_string(), "preview is not implemented yet");
     }
 
     #[test]

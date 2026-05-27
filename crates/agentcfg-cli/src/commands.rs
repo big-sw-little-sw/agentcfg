@@ -41,12 +41,12 @@ fn render_discovery_warning(warning: &InitWarning) {
         }
         InitWarning::UnmanagedArtifact(artifact) => {
             eprintln!(
-                "warning: unmanaged artifact exists at {} ({})",
+                "warning: Unmanaged Artifact exists at {} ({})",
                 artifact.path.display(),
                 artifact.clients.join(", ")
             );
         }
-        _ => {}
+        _ => eprintln!("warning: {warning:?}"),
     }
 }
 
