@@ -11,8 +11,8 @@ The plan is optimized for agent execution. Each task should be small enough that
 - Do not mix domain logic, persistence, filesystem mutation, and CLI rendering in one task unless the task is explicitly an end-to-end slice.
 - Add tests in the same task as the behavior unless the task is scaffolding only.
 - If a task exposes a hidden design decision, stop and update `design-v1.md` before implementing.
-- Keep the core crate skill-first. Share target planning/apply/status/prune around structured desired target artifacts, but do not introduce generic resource manager traits, factories, or interfaces before a second resource kind exists.
-- Treat CLI command handlers as adapters into core workflow APIs. As lower-level behavior is implemented, expose focused core APIs for config paths, config parsing, source/skill resolution, desired target state, planning, apply/prune safety, status, and doctor checks. The CLI should not orchestrate those lower-level steps directly.
+- Keep the core crate skill-first. Share preview/apply/status/prune around structured Desired State for Installed Artifacts, but do not introduce generic resource manager traits, factories, or interfaces before a second Configured Item kind exists.
+- Treat CLI command handlers as adapters into core workflow APIs. As lower-level behavior is implemented, expose focused core APIs for config paths, config parsing, source/skill resolution, Desired State, preview/planner, apply/prune safety, status, and doctor checks. The CLI should not orchestrate those lower-level steps directly.
 - If a future resource-kind or resource-specific CLI selector question appears during V1 work, record it in the post-V1 holding area in `design-v1.md` instead of expanding V1 scope.
 
 ## Workspace Shape
@@ -29,7 +29,7 @@ crates/
 Responsibilities:
 
 - `agentcfg-cli`: argument parsing, terminal rendering, exit codes, and command-specific interaction.
-- `agentcfg-core`: config, source discovery, materialization, hashing, lockfiles, manifests, planning, apply operations, status, doctor, and client registry.
+- `agentcfg-core`: config, source discovery, materialization, hashing, lockfiles, manifests, preview/planner, apply operations, status, doctor, and Client Discovery Registry.
 
 The binary name remains `agentcfg`.
 
@@ -259,26 +259,27 @@ rg -i 'stale consumer|broken target' docs/prd.md docs/design-v1.md README.md
 
 #### Task M1.5.7: Update downstream milestone wording
 
-- [ ] Update M2 and later milestones in this plan to use the root ubiquitous language document before implementing those milestones.
-- [ ] Replace pre-glossary terms in downstream task names, checklists, validation commands, and acceptance notes.
-- [ ] Keep implementation-only names only where the task explicitly calls out a low-level structure that intentionally differs from domain language.
+- [x] Update M2 and later milestones in this plan to use the root ubiquitous language document before implementing those milestones.
+- [x] Replace pre-glossary terms in downstream task names, checklists, validation commands, and acceptance notes.
+- [x] Keep implementation-only names only where the task explicitly calls out a low-level structure that intentionally differs from domain language.
 
 Validation:
 
 ```sh
 rg "sync|plan|upgrade|InstallScope|Consumer|installed name|target registry|Managed Source Tree" docs/implementation-plan-v1.md
+rg -i 'stale consumer|broken target|desired target|client target registry|managed source tree' docs/implementation-plan-v1.md
 ```
 
 ### M2: Path Sources and Skill Selection
 
-Goal: resolve selected skills from local path sources without writing managed state.
+Goal: resolve selected skills from local path Skill Sources without writing Managed State.
 
 #### Task M2.1: Discover path-source skill directories
 
 - [ ] Discover direct child directories containing `SKILL.md`.
-- [ ] Return original skill names and source paths.
-- [ ] Reject missing source directories with a clear diagnostic.
-- [ ] Do not support nested layouts beyond the selected V1 source layout until the open question is resolved.
+- [ ] Return Source Skill Names and Skill Source paths.
+- [ ] Reject missing Skill Source directories with a clear diagnostic.
+- [ ] Do not support nested layouts beyond the selected V1 Skill Source layout until the open question is resolved.
 - [ ] Add tests for discovery, empty sources, and missing sources.
 
 Validation:
@@ -291,8 +292,8 @@ cargo test -p agentcfg-core path_source_discovery
 
 - [ ] Select all discovered skills when neither `include` nor `groups` is set.
 - [ ] Select only named skills when `include` is set.
-- [ ] Report missing included skills with source and layer context.
-- [ ] Keep selection output structured for later aliasing, materialization, and desired-target construction.
+- [ ] Report missing Included Skills with Skill Source and Config Layer context.
+- [ ] Keep selection output structured for later Skill Alias handling, materialization, and Desired State construction.
 - [ ] Add tests for all-skills, included-skills, and missing-include cases.
 
 Validation:
@@ -304,8 +305,8 @@ cargo test -p agentcfg-core skill_selection
 #### Task M2.3: Resolve source-local groups
 
 - [ ] Parse optional source `skills.toml`.
-- [ ] Resolve selected `groups` into skill names.
-- [ ] Report missing groups and group references to missing skills.
+- [ ] Resolve selected `groups` into Source Skill Names.
+- [ ] Report missing Skill Groups and group references to missing skills.
 - [ ] Merge `include` and `groups` deterministically.
 - [ ] Add tests for valid groups, missing groups, and missing group members.
 
@@ -315,24 +316,24 @@ Validation:
 cargo test -p agentcfg-core source_groups
 ```
 
-#### Task M2.4: Apply aliases and produce installed identities
+#### Task M2.4: Apply Skill Aliases and produce Discovery Names
 
-- [ ] Apply layer-local aliases after source-local group expansion.
-- [ ] Treat installed name as runtime identity.
-- [ ] Preserve original source names for lockfile and manifest records.
-- [ ] Keep output structured enough for later target-path collision detection.
+- [ ] Apply layer-local Skill Aliases after source-local group expansion.
+- [ ] Treat Discovery Name as the discoverable identity for Clients.
+- [ ] Preserve Source Skill Names for lockfile and manifest records.
+- [ ] Keep output structured enough for later Discovery Name Collision detection at Client Discovery Locations.
 - [ ] Expose the skill resolution output as a lower-level core API, not a CLI-rendered summary.
-- [ ] Add tests for alias success, unaliased skills, and original-name preservation.
+- [ ] Add tests for Skill Alias success, unaliased skills, and Source Skill Name preservation.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core aliases
+cargo test -p agentcfg-core discovery_name skill_alias
 ```
 
 ### M3: Safe Materialization and Hashing
 
-Goal: produce deterministic managed skill trees from selected source skills.
+Goal: produce deterministic Managed Skill Content from selected source skills.
 
 #### Task M3.1: Implement safe tree walk
 
@@ -340,8 +341,8 @@ Goal: produce deterministic managed skill trees from selected source skills.
 - [ ] Normalize relative paths to POSIX-style `/`.
 - [ ] Sort entries lexicographically.
 - [ ] Reject special files.
-- [ ] Detect broken symlinks.
-- [ ] Add tests for ordering, nested files, special-file rejection where supported, and broken symlinks.
+- [ ] Detect Broken Symlinks.
+- [ ] Add tests for ordering, nested files, special-file rejection where supported, and Broken Symlinks.
 
 Validation:
 
@@ -376,12 +377,12 @@ Validation:
 cargo test -p agentcfg-core hashing
 ```
 
-#### Task M3.4: Document the alias frontmatter rewrite contract
+#### Task M3.4: Document the Skill Alias frontmatter rewrite contract
 
 - [ ] Update `design-v1.md` with the exact `SKILL.md` frontmatter rewrite contract before implementation.
 - [ ] Define the supported frontmatter delimiter and name-field behavior.
 - [ ] Define behavior when no supported frontmatter is present.
-- [ ] Define that source files are never mutated.
+- [ ] Define that Skill Source files are never mutated.
 
 Validation:
 
@@ -389,27 +390,27 @@ Validation:
 git diff -- docs/design-v1.md
 ```
 
-#### Task M3.5: Apply alias rewrite during materialization
+#### Task M3.5: Apply Skill Alias rewrite during materialization
 
-- [ ] Rewrite managed `SKILL.md` frontmatter `name` when an alias is applied.
-- [ ] Do not mutate the upstream source.
-- [ ] Record both `source_hash` before alias rewrite and `installed_hash` after alias rewrite.
+- [ ] Rewrite managed `SKILL.md` frontmatter `name` when a Skill Alias is applied.
+- [ ] Do not mutate the upstream Skill Source.
+- [ ] Record both `source_hash` before Skill Alias rewrite and `installed_hash` after Discovery Name preparation.
 - [ ] Add tests for frontmatter rewrite, no-frontmatter behavior, and hash differences.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core alias_rewrite
+cargo test -p agentcfg-core skill_alias_rewrite
 ```
 
-### M4: Lockfiles and Managed Sources
+### M4: Lockfiles and Managed Skill Content
 
-Goal: make path-source sync repeatable from locked managed state.
+Goal: make path-source apply repeatable from Locked Desired State in Managed State.
 
 #### Task M4.1: Define lockfile models and TOML persistence
 
-- [ ] Model lockfile records for path sources.
-- [ ] Include source id, source type, original name, installed name, source hash, installed hash, alias rewrite state, and materialized symlink metadata.
+- [ ] Model lockfile records for path Skill Sources.
+- [ ] Include source id, source type, Source Skill Name, Discovery Name, source hash, installed hash, Skill Alias rewrite state, and materialized symlink metadata.
 - [ ] Read and write adjacent lockfiles.
 - [ ] Preserve deterministic lockfile ordering.
 - [ ] Add round-trip and ordering tests.
@@ -420,101 +421,101 @@ Validation:
 cargo test -p agentcfg-core lockfile
 ```
 
-#### Task M4.2: Materialize managed source trees for path sources
+#### Task M4.2: Materialize Managed Skill Content for path sources
 
-- [ ] Write selected installed skill trees under the active scope's managed source directory.
-- [ ] Use a stable path containing layer, source id, resolved id, and installed name.
-- [ ] Avoid rewriting existing identical managed trees unnecessarily.
-- [ ] Add tests for project and user managed source paths.
+- [ ] Write selected skill trees as Managed Skill Content under the active Install Level's Managed State directory.
+- [ ] Use a stable path containing Config Layer, source id, resolved id, and Discovery Name.
+- [ ] Avoid rewriting existing identical Managed Skill Content unnecessarily.
+- [ ] Add tests for project and user Managed Skill Content paths.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core managed_sources
+cargo test -p agentcfg-core managed_skill_content
 ```
 
-#### Task M4.3: Implement plain sync locked-source behavior for path sources
+#### Task M4.3: Implement plain apply locked-source behavior for path sources
 
-- [ ] Reuse locked managed source trees when present.
-- [ ] Recreate missing managed trees only when the current source materializes to the locked `source_hash`.
-- [ ] Fail when the source is unavailable and managed state is missing.
-- [ ] Fail when the source changed from the locked hash and managed state is missing.
+- [ ] Reuse locked Managed Skill Content when present.
+- [ ] Recreate missing Managed Skill Content only when the current Skill Source materializes to the locked `source_hash`.
+- [ ] Fail when the Skill Source is unavailable and Managed State is missing.
+- [ ] Fail when the Skill Source changed from the locked hash and Managed State is missing.
 - [ ] Add tests for all four cases.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core locked_path_sync
+cargo test -p agentcfg-core locked_path_apply
 ```
 
-#### Task M4.4: Implement path-source upgrade resolution
+#### Task M4.4: Implement path-source Source Refresh resolution
 
-- [ ] Make `plan --upgrade` refresh path-source hashes in memory only.
-- [ ] Make `sync --upgrade` rewrite active lockfiles.
-- [ ] Make `sync --upgrade` materialize refreshed managed trees.
+- [ ] Make `preview --refresh-sources` refresh path-source hashes in memory only.
+- [ ] Make `apply --refresh-sources` rewrite active lockfiles.
+- [ ] Make `apply --refresh-sources` materialize refreshed Managed Skill Content.
 - [ ] Thread `SourceResolutionPolicy` into lower-level resolution APIs without using CLI flag-shaped booleans.
-- [ ] Verify non-upgrade `plan` and `plan --upgrade` do not write persistent state.
-- [ ] Add tests for changed source content and read-only plan behavior.
+- [ ] Verify preview without Source Refresh and `preview --refresh-sources` do not write persistent state.
+- [ ] Add tests for changed Skill Source content and read-only preview behavior.
 
 Validation:
 
 ```sh
-cargo test --workspace path_upgrade read_only_plan
+cargo test --workspace source_refresh read_only_preview
 ```
 
-### M5: Client Registry, Planning, and CLI Rendering
+### M5: Client Discovery Registry, Preview, and CLI Rendering
 
-Goal: produce structured plans once and render them through the CLI.
+Goal: produce structured preview results once and render them through the CLI.
 
-#### Task M5.1: Implement built-in client target registry
+#### Task M5.1: Implement built-in Client Discovery Registry
 
-- [ ] Add V1 default clients and skill target paths.
-- [ ] Key registry entries by `{resource_kind, client, scope}` with only `resource_kind = "skill"` in V1.
-- [ ] Represent project and user target paths.
+- [ ] Add V1 default Clients and skill Client Discovery Location paths.
+- [ ] Key registry entries by `{configured_item_kind, client, install_level}` with only `configured_item_kind = "skill"` in V1; serialized forms may keep `resource_kind` and Persisted Scope Value until schema migration.
+- [ ] Represent project and user Client Discovery Location paths.
 - [ ] Represent confidence/provenance metadata for diagnostics.
-- [ ] Resolve shared `.agents/skills/{name}` target paths for Codex, Pi, OpenCode, and Cursor.
+- [ ] Resolve shared `.agents/skills/{name}` Client Discovery Location paths for Codex, Pi, OpenCode, and Cursor.
 - [ ] Resolve Cline through `.cline/skills/{name}` and `~/.cline/skills/{name}` with experimental provenance.
 - [ ] Do not model shared `.agents` support as a client-family interface; use multiple client entries that resolve to the same path.
-- [ ] Add tests for every built-in client target.
+- [ ] Add tests for every built-in Client Discovery Location.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core client_registry
+cargo test -p agentcfg-core discovery_registry
 ```
 
-#### Task M5.2: Build desired target state from active layers
+#### Task M5.2: Build Desired State from active Config Layers
 
-- [ ] Combine shared project and user project layers for project commands.
-- [ ] Use only user config for `--user` commands.
-- [ ] Apply additive client selection across active layers.
-- [ ] Add repeatable CLI `--client` for `plan`, `sync`, `prune`, and `status`; carry it through workflow requests as a client filter.
-- [ ] Treat omitted `--client` as all clients selected by active config layers.
-- [ ] Validate that each requested `--client` is both a known V1 client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 client. Do not let CLI flags add clients outside the configured selection.
-- [ ] Convert resolved skills into structured desired target artifacts before planning target changes.
-- [ ] Include kind, target path, target mode, managed source path, installed name, installed hash, source/layer provenance, and consuming `{scope, client}` pairs in desired target artifacts.
-- [ ] Expose desired target state construction as a lower-level core API that `plan`, `sync`, `status`, and `prune` can share.
-- [ ] Add tests for project layering, user-only mode, and shared target consumers.
+- [ ] Combine Shared Project Config and User Project Config for project commands.
+- [ ] Use only User Config for `--user` commands.
+- [ ] Apply additive client selection across active Config Layers.
+- [ ] Add repeatable CLI `--client` for `preview`, `apply`, `prune`, and `status`; carry it through workflow requests as a client filter.
+- [ ] Treat omitted `--client` as all Clients selected by active Config Layers.
+- [ ] Validate that each requested `--client` is both a known V1 Client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 Client. Do not let CLI flags add Clients outside the configured selection.
+- [ ] Convert resolved skills into structured Desired State entries for Installed Artifacts before previewing apply changes.
+- [ ] Include configured item kind, Client Discovery Location path, symlink mode, Managed Skill Content path, Discovery Name, installed hash, source/Config Layer provenance, and Discovery Requirements keyed by Config Layer, Client, and Install Level.
+- [ ] Expose Desired State construction as a lower-level core API that `preview`, `apply`, `status`, and `prune` can share.
+- [ ] Add tests for project layering, user-only mode, and shared Client Discovery Location Discovery Requirements.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core desired_target_state
+cargo test -p agentcfg-core desired_state
 ```
 
-#### Task M5.3: Generate structured plan entries
+#### Task M5.3: Generate structured preview entries
 
-- [ ] Detect installed-name collisions per target path after client target resolution.
-- [ ] Merge consumers only when selected entries refer to the same locked source skill and installed hash.
-- [ ] Include layer/source context in collision diagnostics.
+- [ ] Detect Discovery Name Collisions per Client Discovery Location path after Client Discovery Registry resolution.
+- [ ] Merge Discovery Requirements only when selected entries refer to the same locked Source Skill Name and installed hash.
+- [ ] Include Config Layer/Skill Source context in collision diagnostics.
 - [ ] Generate lockfile create/update entries.
-- [ ] Generate target create/update entries.
-- [ ] Generate consumer addition entries.
-- [ ] Generate stale consumer/artifact entries for reporting only.
-- [ ] Keep plan records structured and free of terminal formatting.
-- [ ] Keep planner records resource-kind aware but skill-first; do not add generic resource manager interfaces.
-- [ ] Expose the planner as a lower-level core API that consumes desired target artifacts and current lock/manifest state.
-- [ ] Add tests for create, update, no-op, and stale reporting plans.
+- [ ] Generate Installed Artifact create/update entries.
+- [ ] Generate Discovery Requirement addition entries.
+- [ ] Generate Stale Discovery Requirement and Stale Installed Artifact entries for reporting only.
+- [ ] Keep planner records structured and free of terminal formatting.
+- [ ] Keep planner records configured-item-kind aware but skill-first; do not add generic resource manager interfaces.
+- [ ] Expose the planner as a lower-level core API that consumes Desired State entries and current lock/manifest state.
+- [ ] Add tests for create, update, no-op, and stale reporting previews.
 
 Validation:
 
@@ -522,28 +523,28 @@ Validation:
 cargo test -p agentcfg-core planner
 ```
 
-#### Task M5.4: Render `plan` output in the CLI
+#### Task M5.4: Render `preview` output in the CLI
 
-- [ ] Render structured plan entries as human-readable terminal output.
-- [ ] Include alias rewrites and uncertain target warnings.
-- [ ] Ensure `agentcfg plan` performs no persistent writes.
-- [ ] Add CLI snapshot or assertion tests for representative plan output.
+- [ ] Render structured preview entries as human-readable terminal output.
+- [ ] Include Skill Alias rewrites and uncertain Client Discovery Location warnings.
+- [ ] Ensure `agentcfg preview` performs no persistent writes.
+- [ ] Add CLI snapshot or assertion tests for representative preview output.
 
 Validation:
 
 ```sh
-cargo test --workspace plan_render
+cargo test --workspace preview_render
 ```
 
-### M6: Sync Apply, Manifest, and Prune
+### M6: Apply, Manifest, and Prune
 
-Goal: safely mutate only manifest-owned target artifacts.
+Goal: safely mutate only manifest-owned Installed Artifacts.
 
 #### Task M6.1: Define manifest models and JSON persistence
 
-- [ ] Model manifest records with resource kind, source id, original name, installed name, target path, target kind, installed hash, consumers, created-by marker, source acquisition mode, and target mode.
+- [ ] Model manifest records with configured item kind, source id, Source Skill Name, Discovery Name, Client Discovery Location path, symlink kind, installed hash, Discovery Requirements, created-by marker, source acquisition mode, and symlink mode. Serialized fields may keep names such as `resource_kind`, `target_path`, `target_kind`, `target_mode`, and `consumers` until schema migration.
 - [ ] Read and write project and user manifests.
-- [ ] Preserve structured consumers by `{scope, client}`.
+- [ ] Preserve structured Discovery Requirements by Config Layer, Client, and Install Level.
 - [ ] Add round-trip and ordering tests.
 
 Validation:
@@ -552,43 +553,43 @@ Validation:
 cargo test -p agentcfg-core manifest
 ```
 
-#### Task M6.2: Apply target creates and updates
+#### Task M6.2: Apply Installed Artifact creates and updates
 
-- [ ] Create client target symlinks to managed source trees.
-- [ ] Update manifest-owned symlinks only when the current target matches the manifest.
-- [ ] Refuse to overwrite unmanaged files or unexpected symlinks.
-- [ ] Add required consumers to manifest records.
-- [ ] Warn when stale artifacts remain after sync.
-- [ ] Expose sync apply as a lower-level core API that consumes structured plan entries; keep terminal warnings in the CLI renderer.
-- [ ] Add tests for create, safe update, unmanaged conflict, and unexpected symlink refusal.
+- [ ] Create Client Discovery Location symlinks to Managed Skill Content.
+- [ ] Update manifest-owned symlinks only when the current symlink target matches the manifest `target_path`.
+- [ ] Refuse to overwrite Unmanaged Artifacts or Unexpected Symlink Targets.
+- [ ] Add required Discovery Requirements to manifest records.
+- [ ] Warn when Stale Installed Artifacts remain after apply.
+- [ ] Expose apply as a lower-level core API that consumes structured planner entries; keep terminal warnings in the CLI renderer.
+- [ ] Add tests for create, safe update, Unmanaged Artifact conflict, and Unexpected Symlink Target refusal.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core sync_apply
+cargo test -p agentcfg-core apply_install
 ```
 
-#### Task M6.3: Detect stale consumers and artifacts
+#### Task M6.3: Detect Stale Discovery Requirements and Stale Installed Artifacts
 
-- [ ] Compare manifest consumers against desired target state.
-- [ ] Mark removed layer/client pairs as stale consumers.
-- [ ] Mark target artifacts with no remaining consumers as stale artifacts.
-- [ ] Detect unused managed source trees as cache leftovers.
-- [ ] Expose stale-state detection as a lower-level core API shared by plan reporting and prune.
-- [ ] Add tests for shared `.agents/skills` consumers across Codex, Pi, OpenCode, and Cursor.
+- [ ] Compare manifest Discovery Requirements against Desired State.
+- [ ] Mark removed Config Layer/Client pairs as Stale Discovery Requirements.
+- [ ] Mark Installed Artifacts with no remaining Discovery Requirements as Stale Installed Artifacts.
+- [ ] Detect unused Managed Skill Content as Managed State leftovers.
+- [ ] Expose stale-state detection as a lower-level core API shared by preview reporting and prune.
+- [ ] Add tests for shared `.agents/skills` Discovery Requirements across Codex, Pi, OpenCode, and Cursor.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core stale_state shared_consumers
+cargo test -p agentcfg-core stale_state shared_discovery_requirements
 ```
 
 #### Task M6.4: Implement prune safety engine
 
-- [ ] Remove stale consumers.
-- [ ] Remove target artifacts only when no consumers remain.
-- [ ] Refuse to prune unexpected symlink targets.
-- [ ] Never delete unmanaged real files.
+- [ ] Remove Stale Discovery Requirements.
+- [ ] Remove Installed Artifacts only when no Discovery Requirements remain.
+- [ ] Refuse to prune Unexpected Symlink Targets.
+- [ ] Never delete Unmanaged Artifacts that are real files.
 - [ ] Delete directories only if empty and manifest-owned.
 - [ ] Expose prune apply as a lower-level core API that consumes stale-state records.
 - [ ] Add tests for each safety invariant.
@@ -605,14 +606,14 @@ Goal: expose local consistency and environment diagnostics without duplicating p
 
 #### Task M7.1: Implement structured status checks
 
-- [ ] Report installed managed artifacts by client.
-- [ ] Report broken symlinks and unexpected targets.
-- [ ] Report missing managed sources.
-- [ ] Report stale artifacts and cache leftovers.
+- [ ] Report installed managed Installed Artifacts by Client.
+- [ ] Report Broken Symlinks and Unexpected Symlink Targets.
+- [ ] Report missing Managed Skill Content.
+- [ ] Report Stale Installed Artifacts and unused Managed Skill Content.
 - [ ] Report config/lock mismatch.
-- [ ] Report unmanaged artifacts as informational unless they conflict.
+- [ ] Report Unmanaged Artifacts as informational unless they conflict.
 - [ ] Expose status checks as structured core results so CLI rendering stays separate.
-- [ ] Add tests using temporary manifests and target directories.
+- [ ] Add tests using temporary manifests and Client Discovery Location directories.
 
 Validation:
 
@@ -636,12 +637,12 @@ cargo test --workspace status_render
 #### Task M7.3: Implement structured doctor checks
 
 - [ ] Check git availability.
-- [ ] Check repo root detection.
-- [ ] Check supported clients and target confidence.
+- [ ] Check Project Root detection.
+- [ ] Check supported Clients and Client Discovery Location confidence.
 - [ ] Check path writability.
 - [ ] Check config schema validity.
-- [ ] Check unmanaged artifacts only when they block planned target paths.
-- [ ] Keep optional network/source checks isolated so local doctor remains deterministic in tests.
+- [ ] Check Unmanaged Artifacts only when they block previewed Client Discovery Location paths.
+- [ ] Keep optional network/Skill Source checks isolated so local doctor remains deterministic in tests.
 - [ ] Expose doctor checks as structured core results with severity and context; do not return terminal-formatted text from core.
 - [ ] Add tests with injectable command/path probes.
 
@@ -666,7 +667,7 @@ cargo test --workspace doctor_render
 
 ### M8: Git Sources
 
-Goal: add git sources by reusing the path-source discovery, materialization, hashing, lockfile, and planner pipeline.
+Goal: add git Skill Sources by reusing the path-source discovery, materialization, hashing, lockfile, and planner pipeline.
 
 #### Task M8.1: Model git source config and validation
 
@@ -683,7 +684,7 @@ cargo test -p agentcfg-core git_config
 
 #### Task M8.2: Resolve git sources into local source trees
 
-- [ ] Clone or fetch git sources into an internal cache.
+- [ ] Clone or fetch git Skill Sources into an internal resolution cache under Managed State.
 - [ ] Resolve floating refs to concrete commits.
 - [ ] Support pinned commit refs without treating them as floating.
 - [ ] Keep network/git command execution behind an injectable boundary for tests.
@@ -700,8 +701,8 @@ cargo test -p agentcfg-core git_resolution
 - [ ] Run skill discovery against resolved git content.
 - [ ] Reuse source-local group resolution.
 - [ ] Reuse safe materialization and hashing.
-- [ ] Reuse alias rewrite behavior.
-- [ ] Add tests proving path and git sources produce equivalent installed trees for equivalent content.
+- [ ] Reuse Skill Alias rewrite behavior.
+- [ ] Add tests proving path and git Skill Sources produce equivalent Managed Skill Content for equivalent content.
 
 Validation:
 
@@ -709,30 +710,30 @@ Validation:
 cargo test -p agentcfg-core git_materialization
 ```
 
-#### Task M8.4: Implement locked git sync behavior
+#### Task M8.4: Implement locked git apply behavior
 
-- [ ] Reuse locked managed git source trees for plain `sync`.
-- [ ] Recreate missing managed trees from locked commits when available.
+- [ ] Reuse locked Managed Skill Content for git Skill Sources during plain apply.
+- [ ] Recreate missing Managed Skill Content from locked commits when available.
 - [ ] Fail clearly when a locked commit cannot be fetched or restored.
 - [ ] Add tests using local fixture repositories.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core locked_git_sync
+cargo test -p agentcfg-core locked_git_apply
 ```
 
-#### Task M8.5: Implement git upgrade behavior
+#### Task M8.5: Implement git Source Refresh behavior
 
-- [ ] Make `plan --upgrade` detect moved floating refs without persistent writes.
-- [ ] Make `sync --upgrade` update lockfiles to resolved commits.
-- [ ] Make `sync --upgrade` materialize refreshed managed trees.
+- [ ] Make `preview --refresh-sources` detect moved floating refs without persistent writes.
+- [ ] Make `apply --refresh-sources` update lockfiles to resolved commits.
+- [ ] Make `apply --refresh-sources` materialize refreshed Managed Skill Content.
 - [ ] Add tests for floating ref movement and pinned commit no-op.
 
 Validation:
 
 ```sh
-cargo test -p agentcfg-core git_upgrade
+cargo test -p agentcfg-core git_source_refresh
 ```
 
 ## End-to-End Validation
@@ -748,18 +749,18 @@ Run before declaring V1 complete:
 - [ ] `agentcfg init` creates `.agentcfg/config.toml`.
 - [ ] `agentcfg init --project` creates `agentcfg.toml`.
 - [ ] `agentcfg init --user` creates `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
-- [ ] `agentcfg plan` performs no persistent writes.
-- [ ] `agentcfg sync` installs a path-source skill from locked managed state.
-- [ ] `agentcfg sync --upgrade` imports changed path-source content.
-- [ ] `agentcfg prune` removes only manifest-owned stale artifacts.
-- [ ] Alias collision behavior is covered.
+- [ ] `agentcfg preview` performs no persistent writes.
+- [ ] `agentcfg apply` installs a path-source skill from Locked Desired State in Managed State.
+- [ ] `agentcfg apply --refresh-sources` imports changed path Skill Source content.
+- [ ] `agentcfg prune` removes only manifest-owned Stale Installed Artifacts and Stale Discovery Requirements.
+- [ ] Discovery Name Collision behavior is covered.
 - [ ] Internal symlink materialization and external symlink rejection are covered.
-- [ ] Shared `.agents/skills` consumers across Codex/Pi/OpenCode/Cursor are covered.
-- [ ] Cline native `.cline/skills` target behavior is covered with experimental provenance.
-- [ ] Git source sync and upgrade behavior are covered by local fixture repositories.
+- [ ] Shared `.agents/skills` Discovery Requirements across Codex/Pi/OpenCode/Cursor are covered.
+- [ ] Cline native `.cline/skills` Client Discovery Location behavior is covered with experimental provenance.
+- [ ] Git Skill Source apply and Source Refresh behavior are covered by local fixture repositories.
 
 ## Open Planning Questions
 
-- [X] Should git sources be included before or after the first path-source sync milestone? YES.
+- [X] Should git Skill Sources be included before or after the first path-source apply milestone? YES.
 - [ ] How much source provenance should be exposed in normal command output versus `doctor`?
 - [ ] Should V1 support both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` source layouts?
