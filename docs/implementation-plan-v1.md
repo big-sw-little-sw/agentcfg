@@ -499,7 +499,7 @@ cargo test -p agentcfg-core client_registry
 Validation:
 
 ```sh
-cargo test -p agentcfg-core desired_state
+cargo test -p agentcfg-core desired_target_state
 ```
 
 #### Task M5.3: Generate structured plan entries
