@@ -311,7 +311,7 @@ cargo test --workspace desired_state namespaced_skill_source
 - [ ] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
 - [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
 - [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
-- [ ] Tighten init Unmanaged Artifact scan (skill-shaped entries; optional grouped warning format per `design-v1.md`) when touching init again.
+- [x] Tighten init Unmanaged Artifact scan to skill-shaped entries (directories containing `SKILL.md`); warn when user init cannot scan user-level Client Discovery Locations (`HOME` unset).
 
 ### M2: Path Skill Sources and Skill Selection
 
@@ -548,6 +548,7 @@ cargo test -p agentcfg-core desired_state
 
 #### Task M5.3: Generate structured preview entries
 
+- [ ] Re-evaluate whether `workflow/types.rs` should split (for example `workflow/types/init.rs` vs preview/apply request types) once preview and apply result fields are defined; avoid a single growing DTO module before adding M5 fields.
 - [ ] Detect Discovery Name Collisions per Client Discovery Location path after Client Discovery Registry resolution.
 - [ ] Merge Discovery Requirements only when selected entries refer to the same locked Source Skill Name and installed hash.
 - [ ] Include Config Layer/Skill Source context in collision diagnostics.
@@ -598,6 +599,7 @@ cargo test -p agentcfg-core manifest
 
 #### Task M6.2: Apply Installed Artifact creates and updates
 
+- [ ] Expose user-level Managed State paths through `WorkflowContext` (delegate to `UserDirs::state_home()` and `ManagedStatePaths::for_user`) so apply/status/prune do not re-read environment variables ad hoc.
 - [ ] Create Client Discovery Location symlinks to Managed Skill Content.
 - [ ] Update manifest-owned symlinks only when the current symlink target matches the manifest `target_path`.
 - [ ] Refuse to overwrite Unmanaged Artifacts or Unexpected Symlink Targets.

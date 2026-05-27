@@ -24,33 +24,31 @@ pub use types::{
     ApplyRequest, ApplyResult, ClientDiscoveryLocationReadFailure, DoctorRequest, DoctorResult,
     InitRequest, InitResult, InitWarning, PreviewRequest, PreviewResult, PruneRequest, PruneResult,
     SkillSourceResolutionPolicy, StatusRequest, StatusResult, UnmanagedArtifact,
+    UserClientDiscoveryLocationsNotScanned,
 };
 
 pub use init::init;
 
 pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
-    workflow_not_implemented()
+    workflow_not_implemented("preview")
 }
 
 pub fn apply(_request: ApplyRequest) -> Result<ApplyResult> {
-    workflow_not_implemented()
+    workflow_not_implemented("apply")
 }
 
 pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
-    workflow_not_implemented()
+    workflow_not_implemented("prune")
 }
 
 pub fn status(_request: StatusRequest) -> Result<StatusResult> {
-    workflow_not_implemented()
+    workflow_not_implemented("status")
 }
 
 pub fn doctor(_request: DoctorRequest) -> Result<DoctorResult> {
-    workflow_not_implemented()
+    workflow_not_implemented("doctor")
 }
 
-fn workflow_not_implemented<T>() -> Result<T> {
-    Err(UnsupportedError::Feature {
-        feature: "workflow not implemented",
-    }
-    .into())
+fn workflow_not_implemented<T>(workflow: &'static str) -> Result<T> {
+    Err(UnsupportedError::Feature { feature: workflow }.into())
 }

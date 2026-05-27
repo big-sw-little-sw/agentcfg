@@ -147,7 +147,7 @@ impl UserDirs {
     ) -> Result<Self> {
         let xdg_config_home = absolute_xdg_path(xdg_config_home);
         let xdg_state_home = absolute_xdg_path(xdg_state_home);
-        let home = non_empty_path(home);
+        let home = absolute_home_path(home)?;
 
         Ok(Self::new(
             xdg_dir_or_home_fallback(
@@ -201,6 +201,15 @@ fn non_empty_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
 
 fn absolute_xdg_path(path: Option<impl Into<PathBuf>>) -> Option<PathBuf> {
     non_empty_path(path).filter(|path| path.is_absolute())
+}
+
+/// `HOME` used for XDG fallbacks and user-level Client Discovery Locations must be absolute.
+fn absolute_home_path(home: Option<impl Into<PathBuf>>) -> Result<Option<PathBuf>> {
+    match non_empty_path(home) {
+        None => Ok(None),
+        Some(path) if path.is_absolute() => Ok(Some(path)),
+        Some(_) => Err(PathEnvironmentError::HomeNotAbsolute.into()),
+    }
 }
 
 fn xdg_default_dir(home: &Path, fallback_suffix: &str) -> PathBuf {
@@ -359,6 +368,18 @@ mod tests {
         assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
         assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
         assert_eq!(user_dirs.home_dir(), None);
+    }
+
+    #[test]
+    fn user_dirs_reject_relative_home() {
+        let error =
+            UserDirs::from_env_vars(Some("/xdg/config"), Some("/xdg/state"), Some("relative/home"))
+                .expect_err("relative HOME should fail");
+
+        assert!(matches!(
+            error,
+            Error::PathEnvironment(PathEnvironmentError::HomeNotAbsolute)
+        ));
     }
 
     #[test]

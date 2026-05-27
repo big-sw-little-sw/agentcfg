@@ -41,6 +41,11 @@ cargo test --workspace
 
 Stable TOML field names (`scope`, `include`, `groups`, `skill_aliases`) are intentional; do not rename them to match glossary prose.
 
+## Imports
+
+- Use `agentcfg_core::layer_level::{ConfigLayer, InstallLevel}` for Config Layer and Install Level selectors.
+- Use `agentcfg_core::workflow` for workflow request/result types and `init` / `preview` / `apply` entrypoints.
+
 ## Conventions
 
 - Match ubiquitous language in CLI help, errors, and diagnostics.

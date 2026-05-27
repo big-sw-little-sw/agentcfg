@@ -78,6 +78,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn user_discovery_registry_groups_shared_agents_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let locations = user_client_discovery_locations(temp.path());
+
+        let agents = locations
+            .iter()
+            .find(|location| location.path == temp.path().join(".agents").join("skills"))
+            .expect("missing shared .agents/skills location");
+
+        assert_eq!(
+            agents.clients,
+            ["codex", "cursor", "opencode", "pi"],
+            "clients sharing .agents/skills were not grouped"
+        );
+        assert_eq!(agents.install_level, InstallLevel::User);
+    }
+
+    #[test]
     fn discovery_registry_groups_shared_agents_path() {
         let temp = tempfile::tempdir().unwrap();
         let locations = project_client_discovery_locations(temp.path());

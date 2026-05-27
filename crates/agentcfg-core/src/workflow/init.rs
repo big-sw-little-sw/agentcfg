@@ -13,6 +13,7 @@ use crate::{Error, InitError, Result};
 use super::context::WorkflowContext;
 use super::types::{
     ClientDiscoveryLocationReadFailure, InitRequest, InitResult, InitWarning, UnmanagedArtifact,
+    UserClientDiscoveryLocationsNotScanned,
 };
 
 pub fn init(request: InitRequest) -> Result<InitResult> {
@@ -102,28 +103,33 @@ fn create_config_file(path: &Path, layer: ConfigLayer, contents: &str) -> Result
 struct DiscoveryLocationInspection {
     unmanaged_artifacts: Vec<UnmanagedArtifact>,
     read_failures: Vec<ClientDiscoveryLocationReadFailure>,
+    user_discovery_not_scanned: Option<UserClientDiscoveryLocationsNotScanned>,
 }
 
 fn inspect_existing_discovery_locations(
     layer: ConfigLayer,
     context: &WorkflowContext,
 ) -> DiscoveryLocationInspection {
+    let mut inspection = DiscoveryLocationInspection::default();
+
     let locations = match layer {
         ConfigLayer::SharedProject | ConfigLayer::UserProject => {
-            let Ok(project_root) = discover_project_root(&context.cwd) else {
-                return DiscoveryLocationInspection::default();
-            };
+            let project_root = discover_project_root(&context.cwd)
+                .unwrap_or_else(|_| context.cwd.clone());
             project_client_discovery_locations(&project_root)
         }
         ConfigLayer::User => {
             let Some(home_dir) = context.home_dir() else {
-                return DiscoveryLocationInspection::default();
+                inspection.user_discovery_not_scanned =
+                    Some(UserClientDiscoveryLocationsNotScanned {
+                        message: "HOME is not set; user-level Client Discovery Locations were not scanned",
+                    });
+                return inspection;
             };
             user_client_discovery_locations(home_dir)
         }
     };
 
-    let mut inspection = DiscoveryLocationInspection::default();
     for location in locations {
         match scan_discovery_location(&location) {
             Ok(artifacts) => inspection.unmanaged_artifacts.extend(artifacts),
@@ -136,9 +142,15 @@ fn inspect_existing_discovery_locations(
 
 fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarning> {
     inspection
-        .read_failures
+        .user_discovery_not_scanned
         .into_iter()
-        .map(InitWarning::ClientDiscoveryLocationReadFailure)
+        .map(InitWarning::UserClientDiscoveryLocationsNotScanned)
+        .chain(
+            inspection
+                .read_failures
+                .into_iter()
+                .map(InitWarning::ClientDiscoveryLocationReadFailure),
+        )
         .chain(
             inspection
                 .unmanaged_artifacts
@@ -162,11 +174,20 @@ fn scan_discovery_location(
     let mut artifacts = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|source| scan_failure(location, source))?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        if fs::metadata(path.join("SKILL.md")).is_err() {
+            continue;
+        }
 
         artifacts.push(UnmanagedArtifact {
             clients: location.clients.clone(),
             install_level: location.install_level,
-            path: entry.path(),
+            path,
         });
     }
 
@@ -189,7 +210,7 @@ fn scan_failure(
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::*;
     use crate::config::parse_config_str;
@@ -291,6 +312,7 @@ mod tests {
         fs::create_dir_all(&agents_skill).unwrap();
         fs::create_dir_all(&claude_skill).unwrap();
         fs::write(agents_skill.join("SKILL.md"), "review").unwrap();
+        fs::write(claude_skill.join("SKILL.md"), "docs").unwrap();
         let context = context_for_project(temp.path());
 
         let result =
@@ -305,14 +327,89 @@ mod tests {
         assert_artifact(
             &artifacts,
             &["codex", "cursor", "opencode", "pi"],
+            InstallLevel::Project,
             &agents_skill,
         );
-        assert_artifact(&artifacts, &["claude"], &claude_skill);
+        assert_artifact(
+            &artifacts,
+            &["claude"],
+            InstallLevel::Project,
+            &claude_skill,
+        );
         assert_eq!(
             fs::read_to_string(agents_skill.join("SKILL.md")).unwrap(),
             "review"
         );
         assert!(!temp.path().join(".cline").exists());
+    }
+
+    #[test]
+    fn non_skill_directory_is_not_reported_as_unmanaged_artifact() {
+        let temp = tempfile::tempdir().unwrap();
+        let agents_skills = temp.path().join(".agents").join("skills");
+        let draft = agents_skills.join("draft-notes");
+        fs::create_dir_all(&draft).unwrap();
+        let context = context_for_project(temp.path());
+
+        let result =
+            init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
+
+        assert!(
+            unmanaged_artifacts(&result).is_empty(),
+            "non-skill directory should not be reported: {:?}",
+            result.warnings
+        );
+    }
+
+    #[test]
+    fn user_init_reports_unmanaged_artifacts_at_user_install_level() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let skill = home.join(".agents").join("skills").join("review");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "review").unwrap();
+
+        let context = WorkflowContext::new(
+            temp.path(),
+            UserDirs::new(
+                temp.path().join("xdg-config"),
+                temp.path().join("xdg-state"),
+                Some(home),
+            ),
+        );
+
+        let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
+
+        let artifacts = unmanaged_artifacts(&result);
+        assert_eq!(artifacts.len(), 1);
+        assert_artifact(
+            &artifacts,
+            &["codex", "cursor", "opencode", "pi"],
+            InstallLevel::User,
+            &skill,
+        );
+    }
+
+    #[test]
+    fn user_init_warns_when_home_is_unavailable_for_discovery_scan() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_home = temp.path().join("xdg-config");
+        let state_home = temp.path().join("xdg-state");
+        let context = WorkflowContext::new(
+            temp.path(),
+            UserDirs::new(config_home, state_home, None::<PathBuf>),
+        );
+
+        let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
+
+        assert!(
+            result.warnings.iter().any(|warning| matches!(
+                warning,
+                InitWarning::UserClientDiscoveryLocationsNotScanned(_)
+            )),
+            "expected scan skip warning, got {:?}",
+            result.warnings
+        );
     }
 
     #[test]
@@ -416,15 +513,21 @@ mod tests {
             .iter()
             .filter_map(|warning| match warning {
                 InitWarning::UnmanagedArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::ClientDiscoveryLocationReadFailure(_) => None,
+                InitWarning::ClientDiscoveryLocationReadFailure(_)
+                | InitWarning::UserClientDiscoveryLocationsNotScanned(_) => None,
             })
             .collect()
     }
 
-    fn assert_artifact(artifacts: &[UnmanagedArtifact], clients: &[&str], path: &Path) {
+    fn assert_artifact(
+        artifacts: &[UnmanagedArtifact],
+        clients: &[&str],
+        install_level: InstallLevel,
+        path: &Path,
+    ) {
         assert!(
             artifacts.iter().any(|artifact| artifact.clients == clients
-                && artifact.install_level == InstallLevel::Project
+                && artifact.install_level == install_level
                 && artifact.path == path),
             "missing artifact for {clients:?} at {} in {artifacts:?}",
             path.display()

@@ -46,6 +46,9 @@ fn render_discovery_warning(warning: &InitWarning) {
                 artifact.clients.join(", ")
             );
         }
+        InitWarning::UserClientDiscoveryLocationsNotScanned(skipped) => {
+            eprintln!("warning: {}", skipped.message);
+        }
         _ => eprintln!("warning: {warning:?}"),
     }
 }

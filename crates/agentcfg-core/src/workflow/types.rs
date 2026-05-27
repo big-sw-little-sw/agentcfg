@@ -40,6 +40,14 @@ pub struct InitResult {
 pub enum InitWarning {
     UnmanagedArtifact(UnmanagedArtifact),
     ClientDiscoveryLocationReadFailure(ClientDiscoveryLocationReadFailure),
+    /// User-level Client Discovery Locations were not scanned (for example `HOME` unset while XDG overrides are set).
+    UserClientDiscoveryLocationsNotScanned(UserClientDiscoveryLocationsNotScanned),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub struct UserClientDiscoveryLocationsNotScanned {
+    pub message: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
