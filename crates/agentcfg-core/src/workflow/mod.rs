@@ -15,8 +15,9 @@
 
 mod context;
 mod init;
-mod stubs;
 mod types;
+
+use crate::{Result, UnsupportedError};
 
 pub use crate::layer_level::{ConfigLayer, InstallLevel};
 pub use types::{
@@ -26,4 +27,30 @@ pub use types::{
 };
 
 pub use init::init;
-pub use stubs::{apply, doctor, preview, prune, status};
+
+pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
+    workflow_not_implemented()
+}
+
+pub fn apply(_request: ApplyRequest) -> Result<ApplyResult> {
+    workflow_not_implemented()
+}
+
+pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
+    workflow_not_implemented()
+}
+
+pub fn status(_request: StatusRequest) -> Result<StatusResult> {
+    workflow_not_implemented()
+}
+
+pub fn doctor(_request: DoctorRequest) -> Result<DoctorResult> {
+    workflow_not_implemented()
+}
+
+fn workflow_not_implemented<T>() -> Result<T> {
+    Err(UnsupportedError::Feature {
+        feature: "workflow not implemented",
+    }
+    .into())
+}

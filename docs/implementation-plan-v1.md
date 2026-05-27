@@ -288,29 +288,23 @@ rustup show active-toolchain
 test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 ```
 
-#### Task M1.6.2: Core module seams and glossary anchors
+#### Task M1.6.2: Core module seams
 
-- [x] Split `workflow` into `init`, `context`, `types`, `stubs` submodules.
-- [x] Move `config` unit tests to `config/tests.rs`.
-- [x] Add anchor modules: `desired_state` (`ConfiguredItemKind`, `NamespacedSkillSourceId`), `lockfile`, `manifest`, `install_health`, `skill_source`.
-- [x] Glossary anchor tests: `desired_state_glossary_*`, `lockfile_glossary_*`, `manifest` / `discovery_requirement_*`, `install_health_glossary_*`.
-
-Validation:
-
-```sh
-cargo test --workspace desired_state lockfile manifest install_health discovery_requirement
-```
-
-#### Task M1.6.3: Honest workflow stubs
-
-- [x] `preview`, `apply`, `prune`, `status`, and `doctor` return `UnsupportedError::WorkflowNotImplemented` (exit 1 via CLI).
-- [x] CLI integration tests assert non-zero exit and message for at least `preview` and `apply`.
+- [x] Split `workflow` into `init`, `context`, and `types` submodules.
+- [x] Move `config` unit tests to `config/tests.rs` (no extra indentation in that file).
+- [x] Add placeholder modules with module docs only: `desired_state` (`ConfiguredItemKind`, `NamespacedSkillSourceId`), `lockfile`, `manifest`, `install_health`, `skill_source`.
+- [x] `WorkflowContext` resolves config/state homes via `UserDirs::from_env()`; `HOME` is read only for user-level discovery scans.
 
 Validation:
 
 ```sh
-cargo test --workspace unimplemented_workflows preview_returns_workflow
+cargo test --workspace desired_state namespaced_skill_source
 ```
+
+#### Task M1.6.3: Workflow stubs until M5/M6
+
+- [x] `preview`, `apply`, `prune`, `status`, and `doctor` return `UnsupportedError::Feature` (exit 1 via CLI) until implemented.
+- [x] Do not add tests that only assert “not implemented”; remove them when real behavior lands.
 
 #### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
 

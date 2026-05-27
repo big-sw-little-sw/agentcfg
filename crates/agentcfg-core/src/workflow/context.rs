@@ -4,10 +4,14 @@ use std::path::{Path, PathBuf};
 use crate::config_paths::UserDirs;
 use crate::{Error, Result};
 
+/// Process and test context for workflow entrypoints.
+///
+/// Path resolution for config and state homes uses [`UserDirs`]; `HOME` is read only
+/// for user-level Client Discovery Location scans when no explicit home is injected.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorkflowContext {
     pub(crate) cwd: PathBuf,
-    xdg_config_home: Option<PathBuf>,
+    user_dirs: UserDirs,
     home_dir: Option<PathBuf>,
 }
 
@@ -18,27 +22,29 @@ impl WorkflowContext {
             source,
         })?;
 
-        Ok(Self::new(
+        Ok(Self {
             cwd,
-            env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
-            env::var_os("HOME").map(PathBuf::from),
-        ))
+            user_dirs: UserDirs::from_env()?,
+            home_dir: env::var_os("HOME")
+                .map(PathBuf::from)
+                .filter(|path| !path.as_os_str().is_empty()),
+        })
     }
 
     pub(crate) fn new(
         cwd: impl Into<PathBuf>,
-        xdg_config_home: Option<impl Into<PathBuf>>,
+        user_dirs: UserDirs,
         home_dir: Option<impl Into<PathBuf>>,
     ) -> Self {
         Self {
             cwd: cwd.into(),
-            xdg_config_home: xdg_config_home.map(Into::into),
+            user_dirs,
             home_dir: home_dir.map(Into::into),
         }
     }
 
-    pub(crate) fn user_config_home(&self) -> Result<PathBuf> {
-        UserDirs::config_home_from_env_vars(self.xdg_config_home.clone(), self.home_dir.clone())
+    pub(crate) fn user_config_home(&self) -> PathBuf {
+        self.user_dirs.config_home().to_path_buf()
     }
 
     pub(crate) fn home_dir(&self) -> Option<&Path> {

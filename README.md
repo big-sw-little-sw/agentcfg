@@ -15,7 +15,7 @@ The Cargo workspace builds with the pinned toolchain in [rust-toolchain.toml](ru
 | Paths | Config layers, lockfiles, Managed State paths, project root discovery |
 | Discovery registry | Built-in Client Discovery Locations (shared `.agents/skills` grouping) |
 | `init` | Creates config; reports **Unmanaged Artifacts** and scan failures; does not write Client Discovery Locations |
-| `preview`, `apply`, `prune`, `status`, `doctor` | Not implemented yet — commands return a clear error instead of silent success |
+| `preview`, `apply`, `prune`, `status`, `doctor` | Not implemented yet — commands return `unsupported feature` (exit 1) instead of silent success |
 
 Planned soon: path Skill Source discovery (implementation plan M2), then desired state, preview operations, apply, manifest, and status.
 

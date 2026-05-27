@@ -51,7 +51,7 @@ fn init_config_paths(layer: ConfigLayer, context: &WorkflowContext) -> Result<Co
             Ok(ConfigFilePaths::for_user_project(project_root))
         }
         ConfigLayer::User => Ok(ConfigFilePaths::for_user_config_home(
-            context.user_config_home()?,
+            context.user_config_home(),
         )),
     }
 }
@@ -189,10 +189,11 @@ fn scan_failure(
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use super::*;
     use crate::config::parse_config_str;
+    use crate::config_paths::UserDirs;
     use crate::layer_level::InstallLevel;
     use crate::{Error, InitError};
 
@@ -242,9 +243,10 @@ mod tests {
     fn user_init_creates_user_config_without_project_agentcfg_dir() {
         let temp = tempfile::tempdir().unwrap();
         let config_home = temp.path().join("xdg-config");
+        let state_home = temp.path().join("xdg-state");
         let context = WorkflowContext::new(
             temp.path(),
-            Some(config_home.clone()),
+            UserDirs::new(config_home.clone(), state_home),
             Some(temp.path().join("home")),
         );
 
@@ -386,10 +388,11 @@ mod tests {
     }
 
     fn context_for_project(project_root: &Path) -> WorkflowContext {
+        let home = project_root.join("home");
         WorkflowContext::new(
             project_root,
-            None::<PathBuf>,
-            Some(project_root.join("home")),
+            UserDirs::new(home.join(".config"), home.join(".local/state")),
+            Some(home),
         )
     }
 

@@ -37,7 +37,7 @@ cargo test --workspace
 | Lockfile | `lockfile` |
 | Manifest, Discovery Requirement, Installed Artifact | `manifest` |
 | Preview / Apply / Source Refresh | `workflow` (orchestration); CLI `preview` / `apply` |
-| Status / Prune / Doctor install-health terms | `install_health` (glossary); behavior in `workflow` when implemented |
+| Status / Prune / Doctor install-health terms | `install_health` (placeholder); behavior in `workflow` when implemented |
 
 Stable TOML field names (`scope`, `include`, `groups`, `skill_aliases`) are intentional; do not rename them to match glossary prose.
 

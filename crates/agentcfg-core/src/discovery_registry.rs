@@ -78,12 +78,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn discovery_requirement_glossary_documented_in_manifest_module() {
-        // Discovery Requirement is modeled in manifest (M6); registry supplies Client paths.
-        const _: &str = "Discovery Requirement";
-    }
-
-    #[test]
     fn discovery_registry_groups_shared_agents_path() {
         let temp = tempfile::tempdir().unwrap();
         let locations = project_client_discovery_locations(temp.path());

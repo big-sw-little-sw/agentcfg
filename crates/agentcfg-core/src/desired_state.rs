@@ -54,11 +54,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn desired_state_glossary_configured_item_kind_skill_only() {
-        assert_eq!(ConfiguredItemKind::Skill, ConfiguredItemKind::Skill);
-    }
-
-    #[test]
     fn namespaced_skill_source_id_persisted_key_includes_layer() {
         let id = NamespacedSkillSourceId::new(ConfigLayer::SharedProject, "local");
         assert_eq!(id.persisted_key(), "shared-project:local");
