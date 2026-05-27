@@ -293,7 +293,7 @@ test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
 - [x] Split `workflow` into `init`, `context`, and `types` submodules.
 - [x] Move `config` unit tests to `config/tests.rs` (no extra indentation in that file).
 - [x] Add placeholder modules with module docs only: `desired_state` (`ConfiguredItemKind`, `NamespacedSkillSourceId`), `lockfile`, `manifest`, `install_health`, `skill_source`.
-- [x] `WorkflowContext` resolves config/state homes via `UserDirs::from_env()`; `HOME` is read only for user-level discovery scans.
+- [x] `WorkflowContext` resolves paths via `UserDirs` (`config_home`, `state_home`, and `home_dir` for user-level discovery scans).
 
 Validation:
 

@@ -246,8 +246,11 @@ mod tests {
         let state_home = temp.path().join("xdg-state");
         let context = WorkflowContext::new(
             temp.path(),
-            UserDirs::new(config_home.clone(), state_home),
-            Some(temp.path().join("home")),
+            UserDirs::new(
+                config_home.clone(),
+                state_home,
+                Some(temp.path().join("home")),
+            ),
         );
 
         let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
@@ -391,8 +394,11 @@ mod tests {
         let home = project_root.join("home");
         WorkflowContext::new(
             project_root,
-            UserDirs::new(home.join(".config"), home.join(".local/state")),
-            Some(home),
+            UserDirs::new(
+                home.join(".config"),
+                home.join(".local/state"),
+                Some(home),
+            ),
         )
     }
 

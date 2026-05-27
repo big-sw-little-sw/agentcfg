@@ -106,17 +106,29 @@ impl ManagedStatePaths {
     }
 }
 
+/// Resolved user environment paths for agentcfg and Client Discovery Locations.
+///
+/// `config_home` and `state_home` follow XDG conventions (with `HOME` fallbacks).
+/// `home_dir` is the user home directory (`HOME`) used for user-level
+/// **Client Discovery Locations** (for example `~/.agents/skills`). It is not
+/// derived from `config_home` when `XDG_CONFIG_HOME` points elsewhere.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserDirs {
     config_home: PathBuf,
     state_home: PathBuf,
+    home_dir: Option<PathBuf>,
 }
 
 impl UserDirs {
-    pub fn new(config_home: impl Into<PathBuf>, state_home: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        config_home: impl Into<PathBuf>,
+        state_home: impl Into<PathBuf>,
+        home_dir: Option<impl Into<PathBuf>>,
+    ) -> Self {
         Self {
             config_home: config_home.into(),
             state_home: state_home.into(),
+            home_dir: home_dir.map(Into::into),
         }
     }
 
@@ -150,6 +162,7 @@ impl UserDirs {
                 "XDG_STATE_HOME",
                 ".local/state",
             )?,
+            home,
         ))
     }
 
@@ -161,16 +174,9 @@ impl UserDirs {
         &self.state_home
     }
 
-    pub(crate) fn config_home_from_env_vars(
-        xdg_config_home: Option<impl Into<PathBuf>>,
-        home: Option<impl Into<PathBuf>>,
-    ) -> Result<PathBuf> {
-        xdg_dir_or_home_fallback(
-            absolute_xdg_path(xdg_config_home),
-            non_empty_path(home).as_deref(),
-            "XDG_CONFIG_HOME",
-            ".config",
-        )
+    /// User home for user-level **Client Discovery Locations**, when `HOME` was set or injected.
+    pub fn home_dir(&self) -> Option<&Path> {
+        self.home_dir.as_deref()
     }
 }
 
@@ -305,6 +311,7 @@ mod tests {
 
         assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
         assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
+        assert_eq!(user_dirs.home_dir(), Some(Path::new("/home/me")));
     }
 
     #[test]
@@ -314,6 +321,7 @@ mod tests {
 
         assert_eq!(user_dirs.config_home(), Path::new("/home/me/.config"));
         assert_eq!(user_dirs.state_home(), Path::new("/home/me/.local/state"));
+        assert_eq!(user_dirs.home_dir(), Some(Path::new("/home/me")));
     }
 
     #[test]
@@ -350,44 +358,12 @@ mod tests {
 
         assert_eq!(user_dirs.config_home(), Path::new("/xdg/config"));
         assert_eq!(user_dirs.state_home(), Path::new("/xdg/state"));
+        assert_eq!(user_dirs.home_dir(), None);
     }
 
     #[test]
     fn user_dirs_report_missing_home_for_config_home_fallback() {
         let error = UserDirs::from_env_vars(None::<&str>, Some("/xdg/state"), None::<&str>)
-            .expect_err("missing home should fail");
-
-        assert!(matches!(
-            error,
-            Error::PathEnvironment(PathEnvironmentError::MissingHomeForXdgFallback {
-                xdg_var: "XDG_CONFIG_HOME"
-            })
-        ));
-    }
-
-    #[test]
-    fn user_config_home_uses_absolute_xdg_config_home() {
-        let config_home =
-            UserDirs::config_home_from_env_vars(Some("/xdg/config"), None::<&str>).unwrap();
-
-        assert_eq!(config_home, Path::new("/xdg/config"));
-    }
-
-    #[test]
-    fn user_config_home_falls_back_to_home_for_missing_or_relative_xdg() {
-        assert_eq!(
-            UserDirs::config_home_from_env_vars(Some("relative/config"), Some("/home/me")).unwrap(),
-            Path::new("/home/me/.config")
-        );
-        assert_eq!(
-            UserDirs::config_home_from_env_vars(None::<&str>, Some("/home/me")).unwrap(),
-            Path::new("/home/me/.config")
-        );
-    }
-
-    #[test]
-    fn user_config_home_reports_missing_home_for_fallback() {
-        let error = UserDirs::config_home_from_env_vars(None::<&str>, None::<&str>)
             .expect_err("missing home should fail");
 
         assert!(matches!(
