@@ -50,8 +50,11 @@ pub(crate) struct PreviewArgs {
     )]
     pub(crate) user: bool,
 
-    #[arg(long)]
-    pub(crate) upgrade: bool,
+    #[arg(
+        long = "refresh-sources",
+        long_help = "Perform Source Refresh: refresh Skill Source resolutions before previewing Locked Desired State"
+    )]
+    pub(crate) refresh_sources: bool,
 }
 
 #[derive(Args, Debug)]
@@ -62,8 +65,11 @@ pub(crate) struct ApplyArgs {
     )]
     pub(crate) user: bool,
 
-    #[arg(long)]
-    pub(crate) upgrade: bool,
+    #[arg(
+        long = "refresh-sources",
+        long_help = "Perform Source Refresh: refresh Skill Source resolutions before applying Locked Desired State"
+    )]
+    pub(crate) refresh_sources: bool,
 }
 
 #[derive(Args, Debug)]
@@ -87,13 +93,13 @@ mod tests {
             ["agentcfg", "init", "--project"].as_slice(),
             ["agentcfg", "init", "--user"].as_slice(),
             ["agentcfg", "preview"].as_slice(),
-            ["agentcfg", "preview", "--upgrade"].as_slice(),
+            ["agentcfg", "preview", "--refresh-sources"].as_slice(),
             ["agentcfg", "preview", "--user"].as_slice(),
-            ["agentcfg", "preview", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "preview", "--user", "--refresh-sources"].as_slice(),
             ["agentcfg", "apply"].as_slice(),
-            ["agentcfg", "apply", "--upgrade"].as_slice(),
+            ["agentcfg", "apply", "--refresh-sources"].as_slice(),
             ["agentcfg", "apply", "--user"].as_slice(),
-            ["agentcfg", "apply", "--user", "--upgrade"].as_slice(),
+            ["agentcfg", "apply", "--user", "--refresh-sources"].as_slice(),
             ["agentcfg", "prune"].as_slice(),
             ["agentcfg", "prune", "--user"].as_slice(),
             ["agentcfg", "status"].as_slice(),
@@ -111,10 +117,16 @@ mod tests {
         for args in [
             ["agentcfg", "init", "--project", "--user"].as_slice(),
             ["agentcfg", "init", "--upgrade"].as_slice(),
+            ["agentcfg", "init", "--refresh-sources"].as_slice(),
+            ["agentcfg", "preview", "--upgrade"].as_slice(),
+            ["agentcfg", "apply", "--upgrade"].as_slice(),
             ["agentcfg", "prune", "--upgrade"].as_slice(),
+            ["agentcfg", "prune", "--refresh-sources"].as_slice(),
             ["agentcfg", "status", "--upgrade"].as_slice(),
+            ["agentcfg", "status", "--refresh-sources"].as_slice(),
             ["agentcfg", "doctor", "--user"].as_slice(),
             ["agentcfg", "doctor", "--upgrade"].as_slice(),
+            ["agentcfg", "doctor", "--refresh-sources"].as_slice(),
             ["agentcfg", "plan"].as_slice(),
             ["agentcfg", "sync"].as_slice(),
             ["agentcfg", "preview", "--project"].as_slice(),

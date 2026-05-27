@@ -62,16 +62,16 @@ Active Config Layers by command:
 | Command | Active Config Layers | Install level |
 | --- | --- | --- |
 | `agentcfg preview` | Shared Project Config, then User Project Config | project level |
-| `agentcfg preview --upgrade` | Shared Project Config, then User Project Config | project level |
+| `agentcfg preview --refresh-sources` | Shared Project Config, then User Project Config | project level |
 | `agentcfg apply` | Shared Project Config, then User Project Config | project level |
-| `agentcfg apply --upgrade` | Shared Project Config, then User Project Config | project level |
+| `agentcfg apply --refresh-sources` | Shared Project Config, then User Project Config | project level |
 | `agentcfg prune` | manifest Discovery Requirements for project Client Discovery Locations | project level |
 | `agentcfg status` | Shared Project Config, User Project Config, project manifest | project level |
 | `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
 | `agentcfg preview --user` | User Config only | user level |
-| `agentcfg preview --user --upgrade` | User Config only | user level |
+| `agentcfg preview --user --refresh-sources` | User Config only | user level |
 | `agentcfg apply --user` | User Config only | user level |
-| `agentcfg apply --user --upgrade` | User Config only | user level |
+| `agentcfg apply --user --refresh-sources` | User Config only | user level |
 | `agentcfg prune --user` | stale Discovery Requirements and Installed Artifacts in user Client Discovery Locations | user level |
 | `agentcfg status --user` | User Config and user manifest | user level |
 
@@ -91,10 +91,10 @@ Source ids are namespaced by layer internally:
 
 This allows shared project config and user project config to both use a source id such as `local` without collision. User-facing diagnostics should include both the human source id and the layer when ambiguity matters.
 
-Installed names are not namespaced. After alias resolution, installed skill names must be unique per target path. If two active layers resolve to the same installed name and same target path:
+Discovery Names are not namespaced. After Skill Alias resolution, Discovery Names must be unique per Client Discovery Location. If two active layers resolve to the same Discovery Name at the same Client Discovery Location:
 
-- If they refer to the same locked source skill and same installed hash, merge Discovery Requirements.
-- If they differ, fail with a collision error and require an alias.
+- If they refer to the same locked Source Skill Name and same installed hash, merge Discovery Requirements.
+- If they differ, fail with a **Discovery Name Collision** error and require a Skill Alias.
 
 Aliases are applied before collision detection.
 
@@ -104,7 +104,7 @@ Discovery Requirements are keyed by Config Layer, Client, and Install Level (ser
 
 In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallLevel` for project-vs-user installation, and reserve low-level `target_path` / symlink **target** only for filesystem symlink diagnostics and internal manifest fields—not user-facing "client target" language.
 
-Use `SourceResolutionPolicy::{UseLocked, RefreshSources}` for the core source-resolution choice so the workflow API does not leak the CLI flag name `--upgrade`.
+Use `SourceResolutionPolicy::{UseLocked, RefreshSources}` for the core source-resolution choice so the workflow API expresses **Source Refresh** without leaking the CLI flag name `--refresh-sources`.
 
 ## Config Schema
 
@@ -140,18 +140,18 @@ Rules:
 
 - `scope` is required and must match the config location.
 - `[[skill_sources]]` entries require explicit `id`.
-- Skill selection lives only under `[[skill_sources]]`.
-- `include` is an optional list of skill names from that source.
-- `groups` is an optional list of source-local group names from that source's `skills.toml`.
-- If neither `include` nor `groups` is set, select all discovered skills from that source.
+- **Skill Selection** lives only under `[[skill_sources]]`.
+- `include` is an optional list of **Included Skills** (Source Skill Names) from that Skill Source.
+- `groups` is an optional list of **Skill Group** names from that Skill Source's `skills.toml`.
+- If neither `include` nor `groups` is set, select all discovered skills from that Skill Source.
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
 - `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
 - `clients = "all"` means every `agentcfg`-supported Client Discovery Location that is enabled for the selected Install Level in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new Client Discovery Location.
 - `[skills]` owns install-wide skill behavior such as target clients. It does not select skill names in V1.
 - CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
-- Aliases live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:skill_name` keys.
-- Aliases are applied after source-local group expansion and before installed-name collision detection.
+- **Skill Aliases** live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `source_id:source_skill_name` keys (Source Skill Name).
+- Skill Aliases are applied after source-local group expansion and before Discovery Name Collision detection.
 
 Potential future config sections:
 
@@ -172,14 +172,14 @@ Supported V1 source types:
 
 Default behavior:
 
-- Git sources are copied into the active scope's managed source directory.
-- Path sources are also copied by default.
-- Direct source symlink mode is deferred from V1. This would mean pointing a Client Discovery Location directly at the original source directory instead of a managed source tree.
+- Git Skill Sources are copied into the active scope's Managed Skill Content directory.
+- Path Skill Sources are also copied by default.
+- Direct source symlink mode is deferred from V1. This would mean pointing a Client Discovery Location directly at the original Skill Source directory instead of Managed Skill Content.
 
 Source manifests:
 
 - `skills.toml` inside a source is optional.
-- Skills can be inferred from directories containing `SKILL.md`.
+- Skills in **Agent Skill Format** can be inferred from directories containing `SKILL.md`.
 - `skills.toml` may define source-local groups.
 
 V1 `skills.toml` schema:
@@ -201,22 +201,22 @@ V1 separates source acquisition from target installation.
 
 Source acquisition mode:
 
-- `copy`: default for path and git sources. The selected skill is materialized into the active scope's managed source directory.
+- `copy`: default for path and git Skill Sources. The selected skill is materialized into the active scope's Managed Skill Content directory.
 
-Managed materialized tree:
+Managed Skill Content paths:
 
 ```text
-project apply: .agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
-user apply:    ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/<layer>/<source-id>/<resolved-id>/<installed-name>/
+project apply: .agentcfg/sources/<layer>/<source-id>/<resolved-id>/<discovery-name>/
+user apply:    ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/<layer>/<source-id>/<resolved-id>/<discovery-name>/
 ```
 
-The exact path format can change during implementation, but it must be stable enough for manifests and diagnostics. The managed tree is the canonical installed content for copied sources.
+The exact path format can change during implementation, but it must be stable enough for manifests and diagnostics. Managed Skill Content is the canonical materialized content for copied sources.
 
-Why managed source trees are required:
+Why Managed Skill Content is required:
 
-- Plain `apply` can reinstall the locked skill version without rereading a mutable path source or floating git ref.
-- `apply --upgrade` materializes a new managed tree, updates the lockfile, and retargets Client Discovery Location symlinks to the new tree.
-- Old managed trees can remain as cache until no lockfile or manifest target uses them, then `prune` may remove them.
+- Plain `apply` can reinstall the locked skill version without rereading a mutable path Skill Source or floating git ref.
+- `apply --refresh-sources` (Source Refresh) materializes new Managed Skill Content, updates the lockfile, and retargets Client Discovery Location symlinks.
+- Old Managed Skill Content can remain as cache until no lockfile or manifest target uses it, then `prune` may remove it.
 
 Installed Artifact mode:
 
@@ -227,7 +227,7 @@ Installed Artifact mode:
 For copied sources:
 
 ```text
-source -> managed materialized tree -> Client Discovery Location symlink
+Skill Source -> Managed Skill Content -> Client Discovery Location symlink
 ```
 
 Client Discovery Location symlinks must point to the managed materialized tree for the same apply scope:
@@ -245,10 +245,10 @@ Expected symlink target validation:
 Apply direction is one-way:
 
 ```text
-source -> managed source tree -> Client Discovery Location
+Skill Source -> Managed Skill Content -> Client Discovery Location
 ```
 
-`agentcfg` never writes changes back to a skill source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --upgrade` to preview the import and `agentcfg apply --upgrade` to materialize it into managed state.
+`agentcfg` never writes changes back to a Skill Source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --refresh-sources` to preview Source Refresh and `agentcfg apply --refresh-sources` to materialize it into Managed Skill Content.
 
 ## Lockfiles
 
@@ -266,8 +266,8 @@ The lockfile records exact resolved inputs:
 - source type
 - requested git ref, when applicable
 - resolved git commit, when applicable
-- original skill name
-- installed skill name
+- Source Skill Name (original name in the Skill Source)
+- Discovery Name (installed skill name exposed to clients)
 - source hash
 - installed hash
 - alias rewrite flag
@@ -275,18 +275,18 @@ The lockfile records exact resolved inputs:
 
 Floating git refs are allowed in config, but lockfiles record concrete commits. Examples of floating refs include `main`, `trunk`, `develop`, and `release/2026-05`; a pinned commit SHA is not floating.
 
-Plain `apply` uses the existing lockfile when present. `apply --upgrade` refreshes source resolutions and rewrites active lockfiles.
+Plain `apply` uses the existing lockfile when present. `apply --refresh-sources` performs Source Refresh, refreshes Skill Source resolutions, and rewrites active lockfiles.
 
-For path sources:
+For path Skill Sources:
 
-- Plain `apply` should install from the locked managed copy if available.
-- If the lockfile exists but the managed source tree is missing, plain `apply` recreates it from the current source only when the current source materializes to the locked `source_hash`.
-- If the current source is unavailable, plain `apply` must fail and ask the user to restore the source or managed state.
-- If the current source is available but no longer matches the locked `source_hash`, plain `apply` must fail and tell the user to run `agentcfg apply --upgrade` only if they want to accept the changed source content.
-- Current path source edits do not affect plain `apply` while the locked managed source tree exists.
-- `preview --upgrade` and `apply --upgrade` detect and use changed path source content.
+- Plain `apply` should install from the locked Managed Skill Content if available.
+- If the lockfile exists but Managed Skill Content is missing, plain `apply` recreates it from the current Skill Source only when the current source materializes to the locked `source_hash`.
+- If the current Skill Source is unavailable, plain `apply` must fail and ask the user to restore the source or managed state.
+- If the current Skill Source is available but no longer matches the locked `source_hash`, plain `apply` must fail and tell the user to run `agentcfg apply --refresh-sources` only if they want to accept the changed source content.
+- Current path Skill Source edits do not affect plain `apply` while the locked Managed Skill Content exists.
+- `preview --refresh-sources` and `apply --refresh-sources` detect and use changed path Skill Source content.
 
-For git sources, plain `apply` installs from the locked managed copy. If that copy is missing, `apply` may recreate it from the locked commit. If the locked commit cannot be fetched, `apply` must fail and ask the user to restore managed state or make the locked commit available; `apply --upgrade` is only appropriate when the user wants to move to a newer resolved commit.
+For git Skill Sources, plain `apply` installs from the locked Managed Skill Content. If that copy is missing, `apply` may recreate it from the locked commit. If the locked commit cannot be fetched, `apply` must fail and ask the user to restore managed state or make the locked commit available; `apply --refresh-sources` is only appropriate when the user wants to move to a newer resolved commit.
 
 ## Manifest
 
@@ -308,8 +308,8 @@ Manifest records should include:
 
 - kind (`skill` in V1)
 - source id
-- original name
-- installed name
+- Source Skill Name
+- Discovery Name
 - target path
 - target kind
 - installed hash
@@ -329,18 +329,18 @@ Discovery Requirements should be structured, not just a string list (serialized 
 
 `scope` is the Persisted Scope Value for the Config Layer. This preserves shared Client Discovery Location behavior while supporting layered Discovery Requirements later.
 
-## Managed Source State Cleanup
+## Managed Skill Content Cleanup
 
-Managed source trees under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` are rebuildable cache derived from lockfiles, not user-authored config and not client-visible install targets.
+Managed Skill Content under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` is rebuildable cache derived from lockfiles, not user-authored config and not client-visible install targets.
 
-The manifest owns Installed Artifacts at Client Discovery Locations. It does not need one record per internal managed source tree.
+The manifest owns Installed Artifacts at Client Discovery Locations. It does not need one record per internal Managed Skill Content tree.
 
 Cleanup policy:
 
 - `prune` removes stale Installed Artifacts and stale Discovery Requirements.
-- `prune` may remove managed source trees that are no longer used by any active lockfile or manifest-owned Installed Artifact.
+- `prune` may remove Managed Skill Content that is no longer used by any active lockfile or manifest-owned Installed Artifact.
 - If source cleanup is risky or expensive in the first implementation slice, it may be skipped conservatively.
-- `status` should be able to report unused managed source trees as cache leftovers.
+- `status` should be able to report unused Managed Skill Content as cache leftovers.
 
 Never remove user-authored source directories.
 
@@ -391,11 +391,11 @@ Discovery Requirements: codex, pi, opencode (shared-project, project level)
 
 Adding a client adds Discovery Requirements. Removing a client makes those Discovery Requirements stale; `prune` removes stale Discovery Requirements and deletes the Installed Artifact only when no Discovery Requirements remain.
 
-## Aliases and Collisions
+## Skill Aliases and Discovery Name Collisions
 
-Installed skill names must be unique per target path.
+Discovery Names must be unique per Client Discovery Location.
 
-If two sources select the same skill name, V1 should fail unless an alias is configured.
+If two Skill Sources select the same Source Skill Name, V1 should fail unless a Skill Alias is configured.
 
 Example:
 
@@ -404,30 +404,30 @@ Example:
 "community:code-review" = "security-review"
 ```
 
-Alias behavior:
+Skill Alias behavior:
 
-- Alias changes the installed runtime name.
-- Patch the managed copy's `SKILL.md` frontmatter `name`, when present.
-- Do not mutate the upstream source.
+- Skill Alias changes the Discovery Name (runtime identity exposed to clients).
+- Patch Managed Skill Content `SKILL.md` frontmatter `name`, when present, so Agent Skill Format metadata matches the Discovery Name.
+- Do not mutate the upstream Skill Source.
 - Emit alias rewrites in `preview`.
 - Summarize alias rewrites in `apply`.
 
 Implementation invariant:
 
 ```text
-Installed name is the runtime identity.
+Discovery Name is the runtime identity.
 ```
 
 Useful code comment:
 
 ```rust
-// The installed name is the identity exposed to agent clients. Some clients read
-// SKILL.md frontmatter while others key off the directory name, so aliases must
-// rewrite the managed copy into one consistent identity. agentcfg must not
-// mutate the source tree.
+// The Discovery Name is the identity exposed to agent clients. Some clients read
+// SKILL.md frontmatter while others key off the directory name, so Skill Aliases must
+// rewrite Managed Skill Content into one consistent identity. agentcfg must not
+// mutate the Skill Source tree.
 ```
 
-Preserve original names in lockfile and manifest for debugging.
+Preserve Source Skill Names in lockfile and manifest for debugging.
 
 ## Hashing
 
@@ -512,7 +512,7 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 - installed managed artifacts by client
 - broken symlinks
 - unexpected symlink targets
-- missing managed sources
+- missing Managed Skill Content
 - stale managed artifacts
 - unmanaged artifacts in configured Client Discovery Locations, reported as informational unless they conflict with desired managed Installed Artifacts
 - config/lock mismatch
@@ -545,8 +545,8 @@ V1 has one resource-specific resolver: skills. Skill resolution owns config pars
 
 - `kind = "skill"`
 - Client Discovery Location path and target mode (internal manifest field)
-- managed source path
-- installed name and installed hash
+- Managed Skill Content path
+- Discovery Name and installed hash
 - source/layer provenance
 - Discovery Requirements keyed by Config Layer, Client, and Install Level
 

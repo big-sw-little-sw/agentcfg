@@ -61,11 +61,12 @@ impl ConfigFilePaths {
     }
 }
 
+/// Paths for generated install state, including **Managed Skill Content** derived from Skill Sources.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeneratedStatePaths {
     install_level: InstallLevel,
     manifest: PathBuf,
-    managed_sources_root: PathBuf,
+    managed_skill_content_root: PathBuf,
 }
 
 impl GeneratedStatePaths {
@@ -75,7 +76,7 @@ impl GeneratedStatePaths {
         Self {
             install_level: InstallLevel::Project,
             manifest: agentcfg_dir.join("manifest.json"),
-            managed_sources_root: agentcfg_dir.join("sources"),
+            managed_skill_content_root: agentcfg_dir.join("sources"),
         }
     }
 
@@ -85,7 +86,7 @@ impl GeneratedStatePaths {
         Self {
             install_level: InstallLevel::User,
             manifest: agentcfg_dir.join("manifest.json"),
-            managed_sources_root: agentcfg_dir.join("sources"),
+            managed_skill_content_root: agentcfg_dir.join("sources"),
         }
     }
 
@@ -97,8 +98,8 @@ impl GeneratedStatePaths {
         &self.manifest
     }
 
-    pub fn managed_sources_root(&self) -> &Path {
-        &self.managed_sources_root
+    pub fn managed_skill_content_root(&self) -> &Path {
+        &self.managed_skill_content_root
     }
 }
 
@@ -267,28 +268,28 @@ mod tests {
     }
 
     #[test]
-    fn project_generated_state_uses_project_agentcfg_dir() {
-        let paths = GeneratedStatePaths::for_project("/repo");
+    fn managed_skill_content_paths_for_project_and_user() {
+        let project_paths = GeneratedStatePaths::for_project("/repo");
 
-        assert_eq!(paths.install_level(), InstallLevel::Project);
-        assert_eq!(paths.manifest(), Path::new("/repo/.agentcfg/manifest.json"));
+        assert_eq!(project_paths.install_level(), InstallLevel::Project);
         assert_eq!(
-            paths.managed_sources_root(),
+            project_paths.manifest(),
+            Path::new("/repo/.agentcfg/manifest.json")
+        );
+        assert_eq!(
+            project_paths.managed_skill_content_root(),
             Path::new("/repo/.agentcfg/sources")
         );
-    }
 
-    #[test]
-    fn user_generated_state_uses_state_home_without_requiring_config_home() {
-        let paths = GeneratedStatePaths::for_user_state_home("/home/me/.local/state");
+        let user_paths = GeneratedStatePaths::for_user_state_home("/home/me/.local/state");
 
-        assert_eq!(paths.install_level(), InstallLevel::User);
+        assert_eq!(user_paths.install_level(), InstallLevel::User);
         assert_eq!(
-            paths.manifest(),
+            user_paths.manifest(),
             Path::new("/home/me/.local/state/agentcfg/manifest.json")
         );
         assert_eq!(
-            paths.managed_sources_root(),
+            user_paths.managed_skill_content_root(),
             Path::new("/home/me/.local/state/agentcfg/sources")
         );
     }

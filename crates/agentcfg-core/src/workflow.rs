@@ -18,6 +18,12 @@ use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
 pub use crate::scope::{ConfigLayer, InstallLevel};
 use crate::{Error, InitError, Result};
 
+/// How preview/apply resolve **Skill Sources** before installing **Locked Desired State**.
+///
+/// - [`UseLocked`]: use locked resolutions from the active lockfile.
+/// - [`RefreshSources`]: perform **Source Refresh** by refreshing Skill Source resolutions
+///   (for example path content changes or floating git refs) before planning or materializing
+///   **Managed Skill Content**.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceResolutionPolicy {
     UseLocked,
@@ -390,6 +396,18 @@ fn scan_failure(
 mod tests {
     use super::*;
     use crate::config::parse_config_str;
+
+    #[test]
+    fn source_refresh_policy_refresh_sources_variant() {
+        assert_eq!(
+            SourceResolutionPolicy::RefreshSources,
+            SourceResolutionPolicy::RefreshSources
+        );
+        assert_ne!(
+            SourceResolutionPolicy::RefreshSources,
+            SourceResolutionPolicy::UseLocked
+        );
+    }
 
     #[test]
     fn starter_configs_parse_for_all_layers() {

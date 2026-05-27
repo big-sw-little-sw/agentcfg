@@ -77,7 +77,7 @@ pub enum ConfigError {
     },
 
     #[error(
-        "invalid skill alias key `{alias_key}` at {path} for {layer:?}; expected `source_id:skill_name`"
+        "invalid Skill Alias key `{alias_key}` at {path} for {layer:?}; expected `source_id:source_skill_name` (Source Skill Name)"
     )]
     InvalidAliasKey {
         path: PathBuf,
@@ -86,7 +86,7 @@ pub enum ConfigError {
     },
 
     #[error(
-        "skill alias `{alias_key}` references unknown source id `{source_id}` at {path} for {layer:?}"
+        "Skill Alias `{alias_key}` references unknown Skill Source id `{source_id}` at {path} for {layer:?}"
     )]
     UnknownAliasSource {
         path: PathBuf,

@@ -4,15 +4,15 @@
 
 `agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
 
-V1 should be source-agnostic, explicit about lifecycle state, and compatible with the emerging `SKILL.md` Agent Skills ecosystem. It should manage skills well without becoming a full cross-agent configuration platform.
+V1 should be source-agnostic, explicit about lifecycle state, and compatible with skills in **Agent Skill Format** (`SKILL.md` directories). It should manage skills well without becoming a full cross-agent configuration platform.
 
 Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.md).
 
 ## Goals
 
 - Separate the skill manager from skill repositories.
-- Consume skills from filesystem path and git sources.
-- Keep skills in the standard `SKILL.md` directory format.
+- Consume skills from filesystem path and git **Skill Sources**.
+- Keep skills in **Agent Skill Format** (`SKILL.md` directories).
 - Support repeatable `preview` and `apply` behavior.
 - Support Shared Project Config, User Project Config, and User Config layers.
 - Preserve manifest-owned cleanup safety.
@@ -32,8 +32,11 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 
 - **Client**: an agent application or CLI that discovers skills from filesystem paths, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
 - **Client Discovery Location**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
-- **Source**: a filesystem path or git location containing skill directories.
-- **Managed source tree**: a generated copy of resolved skill content under `agentcfg` state. Client Discovery Locations point to this tree so normal apply can install the locked version without depending on a mutable source path or moving git branch.
+- **Skill Source**: a filesystem path or git location containing skill directories in Agent Skill Format.
+- **Managed Skill Content**: generated copy of resolved skill content under `agentcfg` state. Client Discovery Locations point to this content so normal apply can install the locked version without depending on a mutable source path or moving git branch.
+- **Skill Selection**: per-source `include` (selects **Included Skills**) and `groups` (selects **Skill Groups**).
+- **Skill Alias**: maps a Source Skill Name to a **Discovery Name**; may require Managed Skill Content frontmatter preparation.
+- **Discovery Name Collision**: two active layers resolve the same Discovery Name at the same Client Discovery Location with different content.
 - **Config layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
 - **Install level**: whether a command installs or inspects at Project Level or User Level.
 - **Discovery Requirement**: a manifest record keyed by Config Layer, Client, and Install Level that says which layer/client requires an Installed Artifact. A shared Client Discovery Location can be pruned only when it has no remaining Discovery Requirements.
@@ -62,15 +65,15 @@ agentcfg init --project
 agentcfg init --user
 
 agentcfg preview
-agentcfg preview --upgrade
+agentcfg preview --refresh-sources
 agentcfg preview --user
-agentcfg preview --user --upgrade
+agentcfg preview --user --refresh-sources
 agentcfg preview --client <client>
 
 agentcfg apply
-agentcfg apply --upgrade
+agentcfg apply --refresh-sources
 agentcfg apply --user
-agentcfg apply --user --upgrade
+agentcfg apply --user --refresh-sources
 agentcfg apply --client <client>
 
 agentcfg prune
@@ -88,9 +91,9 @@ Command semantics:
 - `init --project`: create shared project config at `agentcfg.toml`.
 - `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `preview`: strict read-only preview. No persistent writes to config, lockfiles, manifests, sources, caches, or Client Discovery Locations.
-- `preview --upgrade`: read-only preview after refreshing source resolutions in memory. For git sources, this means checking whether floating refs moved. For path sources, this means checking whether source content changed.
+- `preview --refresh-sources`: read-only preview after **Source Refresh** (refreshing Skill Source resolutions in memory). For git Skill Sources, this means checking whether floating refs moved. For path Skill Sources, this means checking whether source content changed.
 - `apply`: create missing lockfiles if needed, then install the locked resolved state.
-- `apply --upgrade`: refresh source resolutions, update active lockfiles, materialize refreshed managed source trees, then install.
+- `apply --refresh-sources`: perform Source Refresh, update active lockfiles, materialize refreshed Managed Skill Content, then install.
 - `prune`: remove stale managed Installed Artifacts and stale Discovery Requirements. It applies by default because `preview` is the read-only workflow command.
 - `status`: inspect current managed install state.
 - `doctor`: diagnose environment, client support, config validity, path writability, and optional network/source issues.
@@ -123,11 +126,11 @@ agentcfg preview --user
 agentcfg apply --user
 ```
 
-Upgrade selected sources:
+Source Refresh for selected Skill Sources:
 
 ```bash
-agentcfg preview --upgrade
-agentcfg apply --upgrade
+agentcfg preview --refresh-sources
+agentcfg apply --refresh-sources
 ```
 
 Remove stale managed artifacts:
@@ -207,7 +210,7 @@ Known native alternatives are design details covered in [design-v1.md](design-v1
 Is the current managed install state consistent?
 ```
 
-It should report installed managed Installed Artifacts, broken symlinks, unexpected symlink targets, missing managed sources, stale managed Installed Artifacts, config/lock mismatch, manifest readability, and informational unmanaged artifacts in configured Client Discovery Locations.
+It should report installed managed Installed Artifacts, broken symlinks, unexpected symlink targets, missing Managed Skill Content, stale managed Installed Artifacts, config/lock mismatch, manifest readability, and informational unmanaged artifacts in configured Client Discovery Locations.
 
 `doctor` answers:
 
@@ -224,8 +227,8 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg init --project` creates `agentcfg.toml`.
 - `agentcfg init --user` creates `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `agentcfg preview` is read-only.
-- `agentcfg apply` resolves a path skill source, writes lockfile, materializes managed source, and installs skill symlink.
-- `agentcfg apply --upgrade` refreshes path source content and lockfile.
+- `agentcfg apply` resolves a path Skill Source, writes lockfile, materializes Managed Skill Content, and installs skill symlink.
+- `agentcfg apply --refresh-sources` performs Source Refresh for path Skill Source content and lockfile.
 - `agentcfg prune` removes only manifest-owned stale artifacts.
 - Alias collision handling is tested.
 - Internal symlink materialization and external symlink rejection are tested.
