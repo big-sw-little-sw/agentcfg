@@ -10,7 +10,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::scope::{ConfigLayer, InstallLevel};
+use crate::layer_level::{ConfigLayer, InstallLevel};
 use crate::{PathEnvironmentError, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

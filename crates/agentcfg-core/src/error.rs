@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::scope::ConfigLayer;
+use crate::layer_level::ConfigLayer;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -11,7 +11,7 @@ pub enum Error {
     Config(#[from] ConfigError),
 
     #[error(transparent)]
-    Source(#[from] SourceError),
+    SkillSource(#[from] SkillSourceError),
 
     #[error(transparent)]
     PathEnvironment(#[from] PathEnvironmentError),
@@ -46,13 +46,13 @@ pub enum ConfigError {
     },
 
     #[error(
-        "config scope mismatch at {path}: expected `{expected_scope}` for {expected_layer:?}, got `{actual_scope}`"
+        "config Persisted Scope Value mismatch at {path}: expected `{expected_persisted_scope_value}` for {expected_layer:?}, got `{actual_persisted_scope_value}`"
     )]
-    ScopeMismatch {
+    PersistedScopeValueMismatch {
         path: PathBuf,
         expected_layer: ConfigLayer,
-        expected_scope: &'static str,
-        actual_scope: String,
+        expected_persisted_scope_value: &'static str,
+        actual_persisted_scope_value: String,
     },
 
     #[error("missing required config field `{field}` at {path} for {layer:?}")]
@@ -69,30 +69,30 @@ pub enum ConfigError {
         field: &'static str,
     },
 
-    #[error("duplicate source id `{source_id}` at {path} for {layer:?}")]
-    DuplicateSourceId {
+    #[error("duplicate Skill Source id `{skill_source_id}` at {path} for {layer:?}")]
+    DuplicateSkillSourceId {
         path: PathBuf,
         layer: ConfigLayer,
-        source_id: String,
+        skill_source_id: String,
     },
 
     #[error(
-        "invalid Skill Alias key `{alias_key}` at {path} for {layer:?}; expected `source_id:source_skill_name` (Source Skill Name)"
+        "invalid Skill Alias key `{skill_alias_key}` at {path} for {layer:?}; expected `skill_source_id:source_skill_name` (Source Skill Name)"
     )]
-    InvalidAliasKey {
+    InvalidSkillAliasKey {
         path: PathBuf,
         layer: ConfigLayer,
-        alias_key: String,
+        skill_alias_key: String,
     },
 
     #[error(
-        "Skill Alias `{alias_key}` references unknown Skill Source id `{source_id}` at {path} for {layer:?}"
+        "Skill Alias `{skill_alias_key}` references unknown Skill Source id `{skill_source_id}` at {path} for {layer:?}"
     )]
-    UnknownAliasSource {
+    UnknownSkillAliasSkillSource {
         path: PathBuf,
         layer: ConfigLayer,
-        alias_key: String,
-        source_id: String,
+        skill_alias_key: String,
+        skill_source_id: String,
     },
 
     #[error("unsupported config field `{field}` at {path} for {layer:?}")]
@@ -103,12 +103,12 @@ pub enum ConfigError {
     },
 
     #[error(
-        "unsupported source kind `{kind}` at {path} for {layer:?}; supported source kinds in V1: path; git source support is planned for a later phase"
+        "unsupported Skill Source kind `{kind}` at {path} for {layer:?}; supported Skill Source kinds in V1: path; git Skill Source support is planned for a later phase"
     )]
-    UnsupportedSourceKind {
+    UnsupportedSkillSourceKind {
         path: PathBuf,
         layer: ConfigLayer,
-        source_id: Option<String>,
+        skill_source_id: Option<String>,
         kind: String,
     },
 
@@ -123,9 +123,9 @@ pub enum ConfigError {
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SourceError {
-    #[error("source `{source_id}` was not found")]
-    NotFound { source_id: String },
+pub enum SkillSourceError {
+    #[error("Skill Source `{skill_source_id}` was not found")]
+    NotFound { skill_source_id: String },
 }
 
 #[derive(Debug, thiserror::Error)]

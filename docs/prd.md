@@ -2,28 +2,28 @@
 
 ## Purpose
 
-`agentcfg` is a CLI for managing agent configuration as repeatable desired state, starting with skills.
+`agentcfg` is a CLI for managing Agent Configuration as repeatable desired state, starting with skills.
 
-V1 should be source-agnostic, explicit about lifecycle state, and compatible with skills in **Agent Skill Format** (`SKILL.md` directories). It should manage skills well without becoming a full cross-agent configuration platform.
+V1 should support multiple Skill Source kinds, be explicit about lifecycle state, and stay compatible with skills in **Agent Skill Format** (`SKILL.md` directories). It should manage skills well without becoming a full platform for every agent-facing configuration type.
 
 Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.md).
 
 ## Goals
 
-- Separate the skill manager from skill repositories.
+- Separate Skill Configuration handling from Skill Sources.
 - Consume skills from filesystem path and git **Skill Sources**.
 - Keep skills in **Agent Skill Format** (`SKILL.md` directories).
 - Support repeatable `preview` and `apply` behavior.
 - Support Shared Project Config, User Project Config, and User Config layers.
 - Preserve manifest-owned cleanup safety.
-- Prefer portable skill paths where agent clients officially support them.
-- Avoid imposing committed agent config on teams unless explicitly requested.
+- Prefer portable Client Discovery Locations where Clients officially support them.
+- Avoid imposing committed Agent Configuration on teams unless explicitly requested.
 
 ## Non-Goals for V1
 
 - No command/workflow/rule projections.
 - No MCP management.
-- No registry publishing.
+- No external Skill catalog publishing.
 - No desktop UI.
 - No arbitrary org/team layer discovery in the public CLI.
 - No hard size limits on skills.
@@ -31,22 +31,22 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 ## Terms
 
 - **Configured Item**: one kind of agent-facing thing managed by `agentcfg`. V1 has one Configured Item kind: **Skill**.
-- **Desired State**: the outcome active Config Layers ask `agentcfg` to make true, before source resolutions are fixed.
-- **Locked Desired State**: Desired State after source resolutions are fixed so `apply` can repeat the same result.
-- **Lockfile**: a user-visible file beside each Config Layer config that records **Locked Desired State** for Configured Items that need repeatable source resolution.
-- **Manifest**: an `agentcfg`-owned state file under **Managed State** that records **Installed Artifacts** and the **Discovery Requirements** that keep them present.
+- **Desired State**: the outcome active Config Layers ask `agentcfg` to make true, before Skill Source resolutions are fixed.
+- **Locked Desired State**: Desired State after Skill Source resolutions are fixed so `apply` can repeat the same result.
+- **Lockfile**: a user-visible file beside each Config Layer config that records **Locked Desired State** for Configured Items that need repeatable Skill Source resolution.
+- **Manifest**: an `agentcfg`-owned record under **Managed State** that records **Installed Artifacts** and the **Discovery Requirements** that keep them present.
 - **Managed State**: `agentcfg`-owned state used to apply, inspect, and prune configuration safely, including the Manifest and **Managed Skill Content**.
-- **Client**: an agent application or CLI that discovers skills from filesystem paths, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
-- **Client Discovery Location**: a client-specific filesystem location where `agentcfg` installs a skill entrypoint, such as `.agents/skills/{name}`.
+- **Client**: an agent application or CLI that discovers Configured Items from Client Discovery Locations, such as Codex, Pi, OpenCode, Claude Code, Cline, or Cursor.
+- **Client Discovery Location**: a client-specific filesystem location that a Client scans to discover managed configuration, such as `.agents/skills/{name}`.
 - **Skill Source**: a filesystem path or git location containing skill directories in Agent Skill Format.
-- **Managed Skill Content**: `agentcfg`-owned skill files prepared from Locked Desired State under Managed State. Client Discovery Locations point to this content so normal apply can install the locked version without depending on a mutable source path or moving git branch.
-- **Skill Selection**: per-source `include` (selects **Included Skills**) and `groups` (selects **Skill Groups**).
+- **Managed Skill Content**: `agentcfg`-owned skill files prepared from Locked Desired State under Managed State. Client Discovery Locations point to this content so normal apply can install the locked version without depending on a mutable Skill Source path or moving git branch.
+- **Skill Selection**: per-Skill Source `include` (selects **Included Skills**) and `groups` (selects **Skill Groups**).
 - **Skill Alias**: maps a Source Skill Name to a **Discovery Name**; may require Managed Skill Content frontmatter preparation.
-- **Discovery Name Collision**: two active layers resolve the same Discovery Name at the same Client Discovery Location with different content.
-- **Config layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
-- **Install level**: whether a command installs or reports at Project Level or User Level.
+- **Discovery Name Collision**: two Active Config Layers resolve the same Discovery Name at the same Client Discovery Location with different content.
+- **Config Layer**: one Config Layer participating in preview or apply, such as Shared Project Config or User Project Config.
+- **Install Level**: whether a command installs or reports at Project Level or User Level.
 - **Discovery Requirement**: a manifest record keyed by Config Layer, Client, and Install Level that says which layer/client requires an Installed Artifact. A shared Client Discovery Location can be pruned only when it has no remaining Discovery Requirements.
-- **Installed Artifact**: a manifest-owned skill entry at a Client Discovery Location (symlink or copy to managed content).
+- **Installed Artifact**: a manifest-owned skill entry at a Client Discovery Location (symlink or copy to **Managed Skill Content**).
 - **Unmanaged Artifact**: a filesystem entry at a Client Discovery Location that is not recorded in the Manifest as owned by `agentcfg`.
 - **Stale Discovery Requirement**: a Discovery Requirement recorded in the Manifest that is no longer present in Desired State.
 - **Unsatisfied Discovery Requirement**: a Discovery Requirement in Desired State that does not currently have a valid Installed Artifact.
@@ -55,17 +55,17 @@ Detailed persisted contracts and safety rules live in [design-v1.md](design-v1.m
 - **Broken Symlink**: an Installed Artifact symlink whose destination does not exist.
 - **Client selector**: an optional CLI filter that narrows a command at a given Install Level to one or more configured clients.
 
-## Config Types
+## Config Layers
 
-V1 has three user-facing config types:
+V1 has three user-facing Config Layers:
 
-- **Shared project config**: `agentcfg.toml` at the repo root. This is committed when a repo intentionally wants common agent skills for everyone working in that project. Its lockfile is `agentcfg.lock`.
-- **User project config**: `.agentcfg/config.toml` inside a repo. This is for one user's additions in that specific project and should stay uncommitted with the rest of `.agentcfg/`. Its lockfile is `.agentcfg/lock.toml`.
-- **User config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one user's skills across projects and applies only to user-level Client Discovery Locations. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
+- **Shared Project Config**: `agentcfg.toml` at the Project Root. This is committed when a Project intentionally wants common agent skills for everyone working in that Project. Its lockfile is `agentcfg.lock`.
+- **User Project Config**: `.agentcfg/config.toml` inside a Project. This is for one User's additions in that specific Project and should stay uncommitted with the rest of `.agentcfg/`. Its lockfile is `.agentcfg/lock.toml`.
+- **User Config**: `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`. This is for one User's skills across Projects and applies only to user-level Client Discovery Locations. Its lockfile is `${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml`.
 
-Project apply reads shared project config plus user project config. User config is applied separately with `agentcfg apply --user`; it is not merged into project apply.
+Project Level apply reads Shared Project Config plus User Project Config. User Config is applied separately with `agentcfg apply --user`; it is not merged into Project Level apply.
 
-Rationale: agent clients already define how user-level and project-level skills are combined at runtime. `agentcfg` should install user config to user-level Client Discovery Locations and project config to project-level Client Discovery Locations, then let each client apply its own merge and precedence rules. This avoids duplicating user skills into every project and avoids second-guessing client-specific behavior.
+Rationale: Clients already define how user-level and project-level skills are combined at runtime. `agentcfg` should install User Config to user-level Client Discovery Locations and Project Level configuration to project-level Client Discovery Locations, then let each client apply its own merge and precedence rules. This avoids duplicating user skills into every project and avoids second-guessing client-specific behavior.
 
 ## Commands
 
@@ -99,16 +99,16 @@ agentcfg doctor
 
 Command semantics:
 
-- `init`: create config for the selected config layer. Default creates user project config at `.agentcfg/config.toml`.
-- `init --project`: create shared project config at `agentcfg.toml`.
-- `init --user`: create user config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
+- `init`: create config for the selected Config Layer. Default creates User Project Config at `.agentcfg/config.toml`.
+- `init --project`: create Shared Project Config at `agentcfg.toml`.
+- `init --user`: create User Config at `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `preview`: strict read-only preview. No persistent writes to config, lockfiles, the Manifest, Managed State (including Managed Skill Content), Skill Sources, or Client Discovery Locations.
-- `preview --refresh-sources`: read-only preview after **Source Refresh** (refreshing Skill Source resolutions in memory). For git Skill Sources, this means checking whether floating refs moved. For path Skill Sources, this means checking whether source content changed.
+- `preview --refresh-sources`: read-only preview after **Source Refresh** (refreshing Skill Source resolutions in memory). For git Skill Sources, this means checking whether floating refs moved. For path Skill Sources, this means checking whether Skill Source content changed.
 - `apply`: create missing lockfiles if needed, then install **Locked Desired State** into Managed State and Client Discovery Locations.
 - `apply --refresh-sources`: perform Source Refresh, update active lockfiles, materialize refreshed Managed Skill Content, then install.
-- `prune`: remove **Stale Installed Artifacts** and **Stale Discovery Requirements** from managed state. It applies by default because `preview` is the read-only workflow command.
+- `prune`: remove **Stale Installed Artifacts** and **Stale Discovery Requirements** from Managed State. It applies by default because `preview` is the read-only workflow command.
 - `status`: report managed install-state consistency for the active Install Level.
-- `doctor`: check environment and configuration readiness (client support, config validity, path writability, and optional network/source issues). It does not report managed install-state consistency; use `status` for that.
+- `doctor`: check environment and configuration readiness (client support, config validity, path writability, and optional network/Skill Source issues). It does not report managed install-state consistency; use `status` for that.
 - `--user` on `init`: create User Config. `--user` on `preview`, `apply`, `prune`, and `status`: run at User Level (user Install Level) using User Config and user-level Client Discovery Locations. Not used for `doctor`, which is diagnostic.
 - `--client <client>`: narrow `preview`, `apply`, `prune`, or `status` to the named client. It may be repeated. If omitted, the command applies to all clients selected by the active config layers. `--client` must not add a client outside the configured selection in V1. If config uses `clients = "all"`, any supported client may be selected.
 
@@ -157,27 +157,27 @@ agentcfg prune
 `preview` should show:
 
 - lockfile changes that would be created or updated
-- source resolutions
-- skills to create
-- skills to update
+- Skill Source resolutions
+- **Installed Artifacts** to create
+- **Installed Artifacts** to update
 - Discovery Requirement additions
 - stale Discovery Requirement removals
 - stale Installed Artifact removals
-- alias rewrites
+- Discovery Name preparation
 - warnings for uncertain Client Discovery Locations
 
 `apply` applies:
 
 - missing lockfile creation
-- Client Discovery Location creates
-- Client Discovery Location updates
+- **Installed Artifact** creates at Client Discovery Locations
+- **Installed Artifact** updates at Client Discovery Locations
 - Discovery Requirement additions
 
-`apply` does not remove **Stale Installed Artifacts** or **Stale Discovery Requirements**. If stale managed state remains, it warns:
+`apply` does not remove **Stale Installed Artifacts** or **Stale Discovery Requirements**. If stale Managed State remains, it warns:
 
 ```text
 Stale Installed Artifacts or Stale Discovery Requirements remain: N
-These may still be discovered by agent clients until pruned.
+These may still be discovered by Clients until pruned.
 Run: agentcfg prune
 ```
 
@@ -222,7 +222,7 @@ Known native alternatives are design details covered in [design-v1.md](design-v1
 Is the current managed install state consistent?
 ```
 
-It should report installed managed Installed Artifacts, **Broken Symlinks**, **Unexpected Symlink Targets**, missing Managed Skill Content, **Stale Installed Artifacts**, **Unsatisfied Discovery Requirements**, config/lock mismatch, manifest readability, and informational **Unmanaged Artifacts** in configured Client Discovery Locations.
+It should report Installed Artifacts, **Broken Symlinks**, **Unexpected Symlink Targets**, missing Managed Skill Content, **Stale Installed Artifacts**, **Unsatisfied Discovery Requirements**, config/lock mismatch, manifest readability, and informational **Unmanaged Artifacts** in configured Client Discovery Locations.
 
 `doctor` answers:
 
@@ -230,7 +230,7 @@ It should report installed managed Installed Artifacts, **Broken Symlinks**, **U
 Is my environment/config/tooling capable of working?
 ```
 
-It should check git availability, repo root detection, supported clients, path writability, config schema validity, optional network/source checks, Client Discovery Location confidence warnings, and **Unmanaged Artifacts** only when they block planned Client Discovery Location paths. It should not replace `status` for install-state consistency.
+It should check git availability, Project Root detection, supported clients, path writability, config schema validity, optional network/Skill Source checks, Client Discovery Location confidence warnings, and **Unmanaged Artifacts** only when they block previewed Client Discovery Location paths. It should not replace `status` for install-state consistency.
 
 ## MVP Acceptance Criteria
 
@@ -239,15 +239,15 @@ It should check git availability, repo root detection, supported clients, path w
 - `agentcfg init --project` creates `agentcfg.toml`.
 - `agentcfg init --user` creates `${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml`.
 - `agentcfg preview` is read-only.
-- `agentcfg apply` resolves a path Skill Source, writes lockfile, materializes Managed Skill Content, and installs skill symlink.
+- `agentcfg apply` resolves a path Skill Source, writes lockfile, materializes Managed Skill Content, and installs an **Installed Artifact** symlink at a Client Discovery Location.
 - `agentcfg apply --refresh-sources` performs Source Refresh for path Skill Source content and lockfile.
 - `agentcfg prune` removes only manifest-owned **Stale Installed Artifacts** and **Stale Discovery Requirements**.
-- Alias collision handling is tested.
+- Discovery Name Collision handling is tested.
 - Internal symlink materialization and external symlink rejection are tested.
 - Shared `.agents/skills` Discovery Requirements across Codex/Pi/OpenCode/Cursor are tested.
 
 ## Open Product Questions
 
-- Whether git sources are in the first implementation slice or come after path sources - Answered: YES
-- How much source provenance to expose for Client Discovery Registry decisions.
-- Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` source layouts should be accepted in V1.
+- Whether git Skill Sources are in the first implementation slice or come after path Skill Sources - Answered: YES
+- How much Skill Source provenance to expose for Client Discovery Registry decisions.
+- Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` Skill Source layouts should be accepted in V1.

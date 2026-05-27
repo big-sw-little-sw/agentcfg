@@ -1,6 +1,6 @@
 use agentcfg_core::workflow::{
-    self, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallLevel, PreviewRequest,
-    ApplyRequest, PruneRequest, SourceResolutionPolicy, StatusRequest,
+    self, ApplyRequest, ConfigLayer, DoctorRequest, InitRequest, InitWarning, InstallLevel,
+    PreviewRequest, PruneRequest, SkillSourceResolutionPolicy, StatusRequest,
 };
 
 use crate::CliError;
@@ -31,7 +31,7 @@ fn render_init_result(result: &workflow::InitResult) -> Result<(), CliError> {
 
 fn render_discovery_warning(warning: &InitWarning) {
     match warning {
-        InitWarning::DiscoveryLocationReadFailure(read_failure) => {
+        InitWarning::ClientDiscoveryLocationReadFailure(read_failure) => {
             eprintln!(
                 "warning: could not scan client discovery location at {} for {}: {}",
                 read_failure.path.display(),
@@ -67,11 +67,11 @@ fn workflow_invocation_for(command: CliCommand) -> WorkflowInvocation {
         }
         CliCommand::Preview(args) => WorkflowInvocation::Preview(PreviewRequest::new(
             install_level(args.user),
-            source_resolution_policy(args.refresh_sources),
+            skill_source_resolution_policy(args.refresh_sources),
         )),
         CliCommand::Apply(args) => WorkflowInvocation::Apply(ApplyRequest::new(
             install_level(args.user),
-            source_resolution_policy(args.refresh_sources),
+            skill_source_resolution_policy(args.refresh_sources),
         )),
         CliCommand::Prune(args) => {
             WorkflowInvocation::Prune(PruneRequest::new(install_level(args.user)))
@@ -101,11 +101,11 @@ fn install_level(user: bool) -> InstallLevel {
     }
 }
 
-fn source_resolution_policy(refresh_sources: bool) -> SourceResolutionPolicy {
+fn skill_source_resolution_policy(refresh_sources: bool) -> SkillSourceResolutionPolicy {
     if refresh_sources {
-        SourceResolutionPolicy::RefreshSources
+        SkillSourceResolutionPolicy::RefreshSources
     } else {
-        SourceResolutionPolicy::UseLocked
+        SkillSourceResolutionPolicy::UseLocked
     }
 }
 
@@ -136,14 +136,14 @@ mod tests {
             invocation_for(["agentcfg", "preview"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallLevel::Project,
-                SourceResolutionPolicy::UseLocked,
+                SkillSourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
             invocation_for(["agentcfg", "preview", "--user", "--refresh-sources"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallLevel::User,
-                SourceResolutionPolicy::RefreshSources,
+                SkillSourceResolutionPolicy::RefreshSources,
             ))
         );
     }
@@ -154,14 +154,14 @@ mod tests {
             invocation_for(["agentcfg", "apply"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallLevel::Project,
-                SourceResolutionPolicy::UseLocked,
+                SkillSourceResolutionPolicy::UseLocked,
             ))
         );
         assert_eq!(
             invocation_for(["agentcfg", "apply", "--user", "--refresh-sources"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallLevel::User,
-                SourceResolutionPolicy::RefreshSources,
+                SkillSourceResolutionPolicy::RefreshSources,
             ))
         );
     }
@@ -172,14 +172,14 @@ mod tests {
             invocation_for(["agentcfg", "preview", "--refresh-sources"]),
             WorkflowInvocation::Preview(PreviewRequest::new(
                 InstallLevel::Project,
-                SourceResolutionPolicy::RefreshSources,
+                SkillSourceResolutionPolicy::RefreshSources,
             ))
         );
         assert_eq!(
             invocation_for(["agentcfg", "apply", "--refresh-sources"]),
             WorkflowInvocation::Apply(ApplyRequest::new(
                 InstallLevel::Project,
-                SourceResolutionPolicy::RefreshSources,
+                SkillSourceResolutionPolicy::RefreshSources,
             ))
         );
     }
@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn maps_doctor_without_scope() {
+    fn maps_doctor_without_install_level() {
         assert_eq!(
             invocation_for(["agentcfg", "doctor"]),
             WorkflowInvocation::Doctor(DoctorRequest::new())

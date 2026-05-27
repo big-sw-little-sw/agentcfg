@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::scope::InstallLevel;
+use crate::layer_level::InstallLevel;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ClientDiscoveryLocation {

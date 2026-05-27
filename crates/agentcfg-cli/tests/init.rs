@@ -11,7 +11,7 @@ fn default_init_creates_user_project_config() {
     assert_success(&output);
     let config_file = temp.path().join(".agentcfg").join("config.toml");
     assert!(config_file.is_file());
-    assert_config_scope(&config_file, "user-project");
+    assert_persisted_scope_value(&config_file, "user-project");
     assert!(stdout(&output).contains("Created config:"));
 }
 
@@ -24,7 +24,7 @@ fn project_init_creates_shared_config_without_user_project_dir() {
     assert_success(&output);
     let config_file = temp.path().join("agentcfg.toml");
     assert!(config_file.is_file());
-    assert_config_scope(&config_file, "shared-project");
+    assert_persisted_scope_value(&config_file, "shared-project");
     assert!(!temp.path().join(".agentcfg").exists());
 }
 
@@ -47,7 +47,7 @@ fn user_init_creates_user_config_without_project_dir() {
     assert_success(&output);
     let config_file = config_home.join("agentcfg").join("config.toml");
     assert!(config_file.is_file());
-    assert_config_scope(&config_file, "user");
+    assert_persisted_scope_value(&config_file, "user");
     assert!(!temp.path().join(".agentcfg").exists());
 }
 
@@ -67,7 +67,7 @@ fn init_refuses_to_overwrite_existing_config() {
 }
 
 #[test]
-fn init_reports_unmanaged_artifacts_without_modifying_targets() {
+fn init_reports_unmanaged_artifacts_without_modifying_discovery_locations() {
     let temp = tempfile::tempdir().unwrap();
     let skill = temp.path().join(".agents").join("skills").join("review");
     fs::create_dir_all(&skill).unwrap();
@@ -105,11 +105,11 @@ fn assert_success(output: &Output) {
     );
 }
 
-fn assert_config_scope(path: &Path, scope: &str) {
+fn assert_persisted_scope_value(path: &Path, persisted_scope_value: &str) {
     assert!(
         fs::read_to_string(path)
             .unwrap()
-            .contains(&format!("scope = \"{scope}\""))
+            .contains(&format!("scope = \"{persisted_scope_value}\""))
     );
 }
 

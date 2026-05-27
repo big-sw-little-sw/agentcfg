@@ -1,4 +1,4 @@
-//! Shared selectors for Config Layers and Install Level.
+//! Shared selectors for Config Layers and Install Levels.
 //!
 //! Keep this module limited to stable selector vocabulary. Behavior-specific
 //! policy types belong in the module that owns that behavior.
@@ -15,7 +15,7 @@ impl ConfigLayer {
     /// Returns the **Persisted Scope Value** for this layer (`shared-project`, etc.).
     ///
     /// This is not the Install Level.
-    pub fn persisted_scope(self) -> &'static str {
+    pub fn persisted_scope_value(self) -> &'static str {
         match self {
             ConfigLayer::SharedProject => "shared-project",
             ConfigLayer::UserProject => "user-project",
@@ -24,7 +24,7 @@ impl ConfigLayer {
     }
 
     /// Parses a **Persisted Scope Value** into a Config Layer.
-    pub fn from_persisted_scope(value: &str) -> Option<Self> {
+    pub fn from_persisted_scope_value(value: &str) -> Option<Self> {
         match value {
             "shared-project" => Some(ConfigLayer::SharedProject),
             "user-project" => Some(ConfigLayer::UserProject),
@@ -48,31 +48,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_layers_map_to_persisted_scope_strings() {
+    fn config_layers_map_to_persisted_scope_value_strings() {
         assert_eq!(
-            ConfigLayer::SharedProject.persisted_scope(),
+            ConfigLayer::SharedProject.persisted_scope_value(),
             "shared-project"
         );
-        assert_eq!(ConfigLayer::UserProject.persisted_scope(), "user-project");
-        assert_eq!(ConfigLayer::User.persisted_scope(), "user");
+        assert_eq!(
+            ConfigLayer::UserProject.persisted_scope_value(),
+            "user-project"
+        );
+        assert_eq!(ConfigLayer::User.persisted_scope_value(), "user");
     }
 
     #[test]
-    fn persisted_scope_strings_map_to_config_layers() {
+    fn persisted_scope_value_strings_map_to_config_layers() {
         assert_eq!(
-            ConfigLayer::from_persisted_scope("shared-project"),
+            ConfigLayer::from_persisted_scope_value("shared-project"),
             Some(ConfigLayer::SharedProject)
         );
         assert_eq!(
-            ConfigLayer::from_persisted_scope("user-project"),
+            ConfigLayer::from_persisted_scope_value("user-project"),
             Some(ConfigLayer::UserProject)
         );
         assert_eq!(
-            ConfigLayer::from_persisted_scope("user"),
+            ConfigLayer::from_persisted_scope_value("user"),
             Some(ConfigLayer::User)
         );
-        assert_eq!(ConfigLayer::from_persisted_scope("project"), None);
-        assert_eq!(ConfigLayer::from_persisted_scope("sharedProject"), None);
-        assert_eq!(ConfigLayer::from_persisted_scope("userProject"), None);
+        assert_eq!(ConfigLayer::from_persisted_scope_value("project"), None);
+        assert_eq!(
+            ConfigLayer::from_persisted_scope_value("sharedProject"),
+            None
+        );
+        assert_eq!(ConfigLayer::from_persisted_scope_value("userProject"), None);
     }
 }
