@@ -216,7 +216,7 @@ Why Managed Skill Content is required:
 
 - Plain `apply` can reinstall the locked skill version without rereading a mutable path Skill Source or floating git ref.
 - `apply --refresh-sources` (Source Refresh) materializes new Managed Skill Content, updates the lockfile, and retargets Client Discovery Location symlinks.
-- Old Managed Skill Content can remain as cache until no lockfile or manifest target uses it, then `prune` may remove it.
+- Old Managed Skill Content can remain in Managed State until no lockfile or manifest-owned Installed Artifact uses it, then `prune` may remove it.
 
 Installed Artifact mode:
 
@@ -232,8 +232,8 @@ Skill Source -> Managed Skill Content -> Client Discovery Location symlink
 
 Client Discovery Location symlinks must point to the managed materialized tree for the same apply scope:
 
-- project Client Discovery Locations point into project generated state under `.agentcfg/sources/`
-- user Client Discovery Locations point into user generated state under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
+- project Client Discovery Locations point into project Managed State under `.agentcfg/sources/`
+- user Client Discovery Locations point into user Managed State under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
 
 Expected symlink target validation:
 
@@ -251,6 +251,8 @@ Skill Source -> Managed Skill Content -> Client Discovery Location
 `agentcfg` never writes changes back to a Skill Source. To improve a skill, edit the source repo/directory, then run `agentcfg preview --refresh-sources` to preview Source Refresh and `agentcfg apply --refresh-sources` to materialize it into Managed Skill Content.
 
 ## Lockfiles
+
+Each Config Layer has an adjacent lockfile that records **Locked Desired State** for Configured Items (V1: skills) that need repeatable Skill Source resolution.
 
 Each config layer has an adjacent lockfile:
 
@@ -290,7 +292,7 @@ For git Skill Sources, plain `apply` installs from the locked Managed Skill Cont
 
 ## Manifest
 
-The manifest records local generated state and the Discovery Requirements that keep shared Installed Artifacts alive.
+The manifest is **Managed State** ownership records for **Installed Artifacts** and the **Discovery Requirements** that keep shared Installed Artifacts alive.
 
 Project manifest:
 
@@ -331,7 +333,7 @@ Discovery Requirements should be structured, not just a string list (serialized 
 
 ## Managed Skill Content Cleanup
 
-Managed Skill Content under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` is rebuildable cache derived from lockfiles, not user-authored config and not client-visible install targets.
+Managed Skill Content under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` is rebuildable **Managed State** derived from lockfiles, not user-authored config and not client-visible install targets.
 
 The manifest owns Installed Artifacts at Client Discovery Locations. It does not need one record per internal Managed Skill Content tree.
 
@@ -340,7 +342,7 @@ Cleanup policy:
 - `prune` removes stale Installed Artifacts and stale Discovery Requirements.
 - `prune` may remove Managed Skill Content that is no longer used by any active lockfile or manifest-owned Installed Artifact.
 - If source cleanup is risky or expensive in the first implementation slice, it may be skipped conservatively.
-- `status` should be able to report unused Managed Skill Content as cache leftovers.
+- `status` should be able to report unused Managed Skill Content no longer referenced by lockfiles or the Manifest.
 
 Never remove user-authored source directories.
 
@@ -536,12 +538,12 @@ Adoption/import is out of V1 unless a concrete migration need forces it.
 Keep implementation design skill-first. The planner/apply boundary is the important one:
 
 ```text
-resolve resource-specific desired state -> desired Installed Artifacts -> build plan -> render plan OR apply plan
+resolve Configured Item Desired State -> desired Installed Artifacts -> build plan -> render plan OR apply plan
 ```
 
 `preview` and `apply` should share the same planner.
 
-V1 has one resource-specific resolver: skills. Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired Installed Artifacts:
+V1 has one Configured Item resolver: skills (`kind = "skill"`). Skill resolution owns config parsing, source discovery, group expansion, aliases, materialization, and skill hashes. After that, the shared planner/apply/status/prune machinery should operate on structured desired Installed Artifacts:
 
 - `kind = "skill"`
 - Client Discovery Location path and target mode (internal manifest field)
