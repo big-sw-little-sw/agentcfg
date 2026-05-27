@@ -97,7 +97,7 @@ cargo run -p agentcfg-cli -- preview --help
 - [x] Reuse the shared config layer values introduced in M1.1: `shared-project`, `user-project`, and `user`.
 - [x] Add path resolution for shared project config, user project config, and user config.
 - [x] Add path resolution for adjacent lockfiles.
-- [x] Add generated state path resolution for project and user Install Levels.
+- [x] Add managed state path resolution for project and user Install Levels.
 - [x] Keep repo-root discovery minimal and local; do not add global org/team discovery.
 - [x] Expose a focused lower-level config path API that later workflow code can call without going through CLI command types.
 - [x] Add tests using temporary directories and controlled environment variables.
@@ -226,11 +226,11 @@ cargo test --workspace skill_source skill_selection discovery_name source_refres
 
 #### Task M1.5.5: Align desired-state, lockfile, manifest, and managed-state terms
 
-- [ ] Introduce Configured Item as the shared term for item kinds managed by `agentcfg`; keep V1 skill-specific code skill-specific until another kind exists.
-- [ ] Align Desired State and Locked Desired State wording in planner, lockfile, preview, and apply docs.
-- [ ] Align Lockfile wording to record Locked Desired State for Configured Items that need repeatable source resolution.
-- [ ] Align Manifest wording as the ownership state for Installed Artifacts and their Discovery Requirements.
-- [ ] Rename generated/cache/internal-state wording to Managed State where referring to `agentcfg`-owned state used by apply, status, and prune.
+- [x] Introduce Configured Item as the shared term for item kinds managed by `agentcfg`; keep V1 skill-specific code skill-specific until another kind exists.
+- [x] Align Desired State and Locked Desired State wording in planner, lockfile, preview, and apply docs.
+- [x] Align Lockfile wording to record Locked Desired State for Configured Items that need repeatable source resolution.
+- [x] Align Manifest wording as the ownership state for Installed Artifacts and their Discovery Requirements.
+- [x] Rename generated/cache/internal-state wording to Managed State where referring to `agentcfg`-owned state used by apply, status, and prune.
 
 Validation:
 

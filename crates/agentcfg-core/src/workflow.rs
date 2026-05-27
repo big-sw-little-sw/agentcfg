@@ -1,5 +1,9 @@
 //! User workflow entrypoints for the CLI and future frontends.
 //!
+//! Preview and apply orchestrate resolution of **Locked Desired State** into
+//! **Managed State** and **Client Discovery Locations**. V1 stubs return
+//! placeholder results until planning and apply are implemented.
+//!
 //! These functions are orchestration boundaries, not the lower-level
 //! config, planning, apply, status, or diagnostic APIs. Those focused APIs
 //! should be added when they are needed by implemented behavior.
@@ -18,12 +22,14 @@ use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
 pub use crate::scope::{ConfigLayer, InstallLevel};
 use crate::{Error, InitError, Result};
 
-/// How preview/apply resolve **Skill Sources** before installing **Locked Desired State**.
+/// How preview/apply move from **Desired State** to **Locked Desired State** via lockfiles.
 ///
-/// - [`UseLocked`]: use locked resolutions from the active lockfile.
-/// - [`RefreshSources`]: perform **Source Refresh** by refreshing Skill Source resolutions
-///   (for example path content changes or floating git refs) before planning or materializing
-///   **Managed Skill Content**.
+/// Active Config Layers express **Desired State**; lockfiles record **Locked Desired State**
+/// for Configured Items that need repeatable Skill Source resolution.
+///
+/// - [`UseLocked`]: use **Locked Desired State** from the active lockfile without Source Refresh.
+/// - [`RefreshSources`]: perform **Source Refresh** to refresh Skill Source resolutions before
+///   producing updated **Locked Desired State** and materializing **Managed Skill Content**.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceResolutionPolicy {
     UseLocked,
