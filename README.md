@@ -11,8 +11,8 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 ## Goals
 
 - Keep the skill manager separate from skill repositories.
-- Support standard `SKILL.md` skill directories.
-- Support path and git skill sources.
+- Support skills in **Agent Skill Format** (`SKILL.md` directories).
+- Support path and git **Skill Sources**.
 - Provide repeatable `preview`, `apply`, and `prune` workflows.
 - Manage shared project, user project, and user-level configuration.
 - Install only manifest-owned Installed Artifacts and prune conservatively.
@@ -30,8 +30,8 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 
 ```sh
 agentcfg init [--project|--user]
-agentcfg preview [--user] [--upgrade]
-agentcfg apply [--user] [--upgrade]
+agentcfg preview [--user] [--refresh-sources]
+agentcfg apply [--user] [--refresh-sources]
 agentcfg prune [--user]
 agentcfg status [--user]
 agentcfg doctor
@@ -63,10 +63,10 @@ Project apply reads shared and user project config. User apply is separate and i
 V1 separates source acquisition from Client Discovery Location installation:
 
 ```text
-source -> managed materialized tree -> Client Discovery Location symlink
+Skill Source -> Managed Skill Content -> Client Discovery Location symlink
 ```
 
-This lets normal `apply` reinstall the locked version without depending on mutable path sources or floating git refs, while `apply --upgrade` can refresh source resolutions explicitly.
+This lets normal `apply` reinstall the locked version without depending on mutable path sources or floating git refs, while `apply --refresh-sources` performs **Source Refresh** to refresh Skill Source resolutions before applying Locked Desired State.
 
 Cleanup safety rules:
 

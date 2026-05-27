@@ -1,8 +1,11 @@
 //! V1 skill config parsing and validation.
 //!
-//! This module owns the persisted TOML shape and returns validated domain
-//! models so workflow and source-resolution code do not need to inspect raw
-//! config tables.
+//! Config declares **Skill Sources** (`[[skill_sources]]`), **Skill Selection**
+//! (`include` selects **Included Skills**; `groups` selects **Skill Groups**),
+//! and **Skill Aliases** that map a Source Skill Name to a **Discovery Name**.
+//!
+//! This module owns the persisted TOML shape and returns validated domain models
+//! so workflow and source-resolution code do not need to inspect raw config tables.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -248,7 +251,7 @@ fn validate_skill_aliases(
         .map(|source| source.id())
         .collect::<BTreeSet<_>>();
 
-    for (source_skill, installed_name) in &raw_aliases {
+    for (source_skill, discovery_name) in &raw_aliases {
         let Some((source_id, skill_name)) = source_skill.split_once(':') else {
             return Err(ConfigError::InvalidAliasKey {
                 path: path.to_path_buf(),
@@ -277,7 +280,7 @@ fn validate_skill_aliases(
             .into());
         }
 
-        if installed_name.trim().is_empty() {
+        if discovery_name.trim().is_empty() {
             return Err(empty_field(path, layer, "skill_aliases[]"));
         }
     }
@@ -384,6 +387,48 @@ groups = ["design"]
 [skills]
 clients = ["codex", "claude", "opencode"]
 "#;
+
+    /// Future **Discovery Name Collision** detection is not implemented in M1.5.4.
+    const DISCOVERY_NAME_COLLISION_NOT_YET_ENFORCED: &str =
+        "Discovery Name Collision detection is planned for a later milestone";
+
+    #[test]
+    fn skill_source_config_parses_path_source() {
+        let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
+
+        let source = &config.sources()[0];
+        assert_eq!(source.id(), "personal");
+        assert!(matches!(
+            source.source(),
+            SkillSourceKind::Path { path } if path == Path::new("../skills")
+        ));
+    }
+
+    #[test]
+    fn skill_selection_include_and_groups_are_preserved() {
+        let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
+
+        assert_eq!(config.sources()[0].include(), ["do-code-review"]);
+        assert_eq!(config.sources()[0].groups(), ["design"]);
+    }
+
+    #[test]
+    fn skill_alias_sets_discovery_name() {
+        let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
+
+        assert_eq!(
+            config.skill_aliases().get("personal:legacy-review"),
+            Some(&"code-review".to_string())
+        );
+    }
+
+    #[test]
+    fn discovery_name_collision_is_documented_in_module() {
+        assert!(
+            !DISCOVERY_NAME_COLLISION_NOT_YET_ENFORCED.is_empty(),
+            "module documents that Discovery Name Collision detection is future work"
+        );
+    }
 
     #[test]
     fn parses_valid_shared_project_config() {

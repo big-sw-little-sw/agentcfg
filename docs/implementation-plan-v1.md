@@ -75,7 +75,7 @@ Goal: make every V1 command invocable while keeping behavior stubbed until core 
 
 - [x] Introduce `clap` for command parsing instead of growing manual argument parsing.
 - [x] Add `init`, `preview` (formerly `plan`), `apply` (formerly `sync`), `prune`, `status`, and `doctor`.
-- [x] Add `--project`, `--user`, and `--upgrade` only where allowed by the PRD.
+- [x] Add `--project`, `--user`, and `--refresh-sources` only where allowed by the PRD.
 - [x] Reject invalid flag combinations through argument parsing where possible.
 - [x] Map parser usage errors through the M0.2 CLI error adapter to exit code `2`.
 - [x] Route each command to a small CLI handler that calls a core workflow stub using structured request/result types.
@@ -208,15 +208,15 @@ cargo test --workspace discovery_registry discovery_requirement
 
 #### Task M1.5.4: Align skill source, selection, and managed content terms
 
-- [ ] Rename standard/Agent Skills Standard wording to Agent Skill Format where referring to the `SKILL.md` directory format.
-- [ ] Rename Source/domain-doc wording to Skill Source for V1 skill acquisition.
-- [ ] Keep Source Location out of canonical API/model names until multiple Configured Item kinds prove they share a source-resolution lifecycle.
-- [ ] Rename Managed Source Tree/copy wording to Managed Skill Content, including lockfile, materialization, and status docs.
-- [ ] Rename installed name/runtime identity wording to Discovery Name; keep Source Skill Name for source identity.
-- [ ] Rename alias/installed-name collision wording to Discovery Name Collision.
-- [ ] Align include/group docs with domain-shaped terms: Skill Selection, Included Skill, and Skill Group.
-- [ ] Update alias docs to say Skill Alias changes the Discovery Name and may require Managed Skill Content frontmatter preparation.
-- [ ] Rename upgrade wording to Source Refresh for source-resolution refresh behavior, including CLI flag `--refresh-sources`, workflow APIs, tests, and docs.
+- [x] Rename standard/Agent Skills Standard wording to Agent Skill Format where referring to the `SKILL.md` directory format.
+- [x] Rename Source/domain-doc wording to Skill Source for V1 skill acquisition.
+- [x] Keep Source Location out of canonical API/model names until multiple Configured Item kinds prove they share a source-resolution lifecycle.
+- [x] Rename Managed Source Tree/copy wording to Managed Skill Content, including lockfile, materialization, and status docs.
+- [x] Rename installed name/runtime identity wording to Discovery Name; keep Source Skill Name for source identity.
+- [x] Rename alias/installed-name collision wording to Discovery Name Collision.
+- [x] Align include/group docs with domain-shaped terms: Skill Selection, Included Skill, and Skill Group.
+- [x] Update alias docs to say Skill Alias changes the Discovery Name and may require Managed Skill Content frontmatter preparation.
+- [x] Rename upgrade wording to Source Refresh for source-resolution refresh behavior, including CLI flag `--refresh-sources`, workflow APIs, tests, and docs.
 
 Validation:
 
