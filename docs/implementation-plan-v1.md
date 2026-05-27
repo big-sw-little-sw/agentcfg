@@ -308,7 +308,7 @@ cargo test --workspace desired_state namespaced_skill_source
 
 #### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
 
-- [ ] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
+- [x] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
 - [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
 - [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
 - [x] Tighten init Unmanaged Artifact scan to skill-shaped entries (directories containing `SKILL.md`); warn when user init cannot scan user-level Client Discovery Locations (`HOME` unset).
@@ -319,17 +319,17 @@ Goal: resolve Skill Selection from local path Skill Sources without writing Mana
 
 #### Task M2.1: Discover path Skill Source skill directories
 
-- [ ] Implement discovery under `skill_source/` (do not grow `workflow::init` with resolution logic).
-- [ ] Add optional `[[skill_sources]].discovery_depth` (default `4`, max `8`, per Skill Source).
-- [ ] Resolve configured `path` relative to the config file’s parent directory, or use absolute paths as-is; discover from the resolved Skill Source directory.
-- [ ] Discover **Skills** as directories containing `SKILL.md` within `discovery_depth` path segments below the Skill Source root; skip hidden directories (name starts with `.`).
-- [ ] Skip symlink directory entries below the Skill Source root for M2.1; symlink materialization and external symlink rejection are handled in M3.
-- [ ] Apply nested-skill exclusion: when a directory contains `SKILL.md`, treat it as a **Skill** and do not scan its children.
-- [ ] Set **Source Skill Name** to the skill directory’s leaf name; fail with a clear diagnostic when duplicate leaf names appear at different paths in the same Skill Source.
-- [ ] Return structured discoveries (`source_skill_name`, skill directory path); empty Skill Source directories return success with zero skills.
-- [ ] Reject missing and non-directory Skill Source paths with distinct clear diagnostics (`skill_source_id`, configured path, resolved path).
-- [ ] Document traversal rules in `design-v1.md` § Skill Source Discovery.
-- [ ] Add tests for discovery, depth limits, nested-skill exclusion, duplicate names, hidden dirs, symlink directory skipping, empty Skill Sources, missing Skill Sources, non-directory Skill Sources, and path resolution.
+- [x] Implement discovery under `skill_source/` (do not grow `workflow::init` with resolution logic).
+- [x] Add optional `[[skill_sources]].discovery_depth` (default `4`, max `8`, per Skill Source).
+- [x] Resolve configured `path` relative to the config file’s parent directory, or use absolute paths as-is; discover from the resolved Skill Source directory.
+- [x] Discover **Skills** as directories containing `SKILL.md` within `discovery_depth` path segments below the Skill Source root; skip hidden directories (name starts with `.`).
+- [x] Skip symlink directory entries below the Skill Source root for M2.1; symlink materialization and external symlink rejection are handled in M3.
+- [x] Apply nested-skill exclusion: when a directory contains `SKILL.md`, treat it as a **Skill** and do not scan its children.
+- [x] Set **Source Skill Name** to the skill directory’s leaf name; fail with a clear diagnostic when duplicate leaf names appear at different paths in the same Skill Source.
+- [x] Return structured discoveries (`source_skill_name`, skill directory path); empty Skill Source directories return success with zero skills.
+- [x] Reject missing and non-directory Skill Source paths with distinct clear diagnostics (`skill_source_id`, configured path, resolved path).
+- [x] Document traversal rules in `design-v1.md` § Skill Source Discovery.
+- [x] Add tests for discovery, depth limits, nested-skill exclusion, duplicate names, hidden dirs, symlink directory skipping, empty Skill Sources, missing Skill Sources, non-directory Skill Sources, and path resolution.
 
 Validation:
 
