@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::layer_level::ConfigLayer;
+use crate::skill_source::DiscoveryDepth;
 use crate::{ConfigError, Error, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +47,7 @@ impl Config {
 pub struct SkillSourceConfig {
     id: String,
     kind: SkillSourceKind,
+    discovery_depth: DiscoveryDepth,
     included_skill_names: Vec<String>,
     skill_group_names: Vec<String>,
 }
@@ -65,6 +67,10 @@ impl SkillSourceConfig {
 
     pub fn skill_group_names(&self) -> &[String] {
         &self.skill_group_names
+    }
+
+    pub fn discovery_depth(&self) -> DiscoveryDepth {
+        self.discovery_depth
     }
 }
 
@@ -216,6 +222,8 @@ fn validate_skill_source(
         }
     };
 
+    let discovery_depth = validate_discovery_depth(path, layer, raw.discovery_depth)?;
+
     let included_skill_names =
         validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
     let skill_group_names =
@@ -224,9 +232,30 @@ fn validate_skill_source(
     Ok(SkillSourceConfig {
         id,
         kind: skill_source_kind,
+        discovery_depth,
         included_skill_names,
         skill_group_names,
     })
+}
+
+fn validate_discovery_depth(
+    path: &Path,
+    layer: ConfigLayer,
+    discovery_depth: u8,
+) -> Result<DiscoveryDepth> {
+    DiscoveryDepth::try_from_u8(discovery_depth).ok_or_else(|| {
+        ConfigError::InvalidFieldValue {
+            path: path.to_path_buf(),
+            layer,
+            field: "skill_sources[].discovery_depth",
+            value: discovery_depth.to_string(),
+        }
+        .into()
+    })
+}
+
+fn default_discovery_depth() -> u8 {
+    DiscoveryDepth::DEFAULT.as_u8()
 }
 
 fn validate_optional_list(
@@ -351,6 +380,8 @@ struct RawSkillSource {
     #[serde(rename = "type")]
     kind: Option<String>,
     path: Option<PathBuf>,
+    #[serde(default = "default_discovery_depth")]
+    discovery_depth: u8,
     include: Option<Vec<String>>,
     groups: Option<Vec<String>>,
     exclude: Option<Vec<String>>,

@@ -250,4 +250,4 @@ It should check git availability, Project Root detection, supported clients, pat
 
 - Whether git Skill Sources are in the first implementation slice or come after path Skill Sources - Answered: YES
 - How much Skill Source provenance to expose for Client Discovery Registry decisions.
-- Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` Skill Source layouts should be accepted in V1.
+- Whether both `skills/<name>/SKILL.md` and root-level `<name>/SKILL.md` Skill Source layouts should be accepted in V1. — Answered: YES; bounded `discovery_depth` with nested-skill exclusion (`design-v1.md`, M2.1).

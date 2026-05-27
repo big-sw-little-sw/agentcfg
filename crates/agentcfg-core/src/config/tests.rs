@@ -68,6 +68,7 @@ fn parses_valid_shared_project_config() {
         ["do-code-review"]
     );
     assert_eq!(config.skill_sources()[0].skill_group_names(), ["design"]);
+    assert_eq!(config.skill_sources()[0].discovery_depth().as_u8(), 4);
     assert_eq!(
         config.skill_aliases().get("personal:legacy-review"),
         Some(&"code-review".to_string())
@@ -128,8 +129,8 @@ fn rejects_persisted_scope_value_mismatch() {
 
 #[test]
 fn rejects_missing_top_level_scope() {
-    let error = parse_config_str(ConfigLayer::User, "user.toml", VALID_SKILL_SOURCE_CONFIG)
-        .unwrap_err();
+    let error =
+        parse_config_str(ConfigLayer::User, "user.toml", VALID_SKILL_SOURCE_CONFIG).unwrap_err();
 
     assert_missing_field(error, "scope");
 }
@@ -452,6 +453,87 @@ clients = ["codex"]
             .to_string()
             .contains("git Skill Source support is planned for a later phase")
     );
+}
+
+#[test]
+fn skill_source_config_discovery_depth_defaults_to_four() {
+    let config = parse_layer_config(ConfigLayer::SharedProject, "shared-project");
+
+    assert_eq!(config.skill_sources()[0].discovery_depth().as_u8(), 4);
+}
+
+#[test]
+fn skill_source_config_discovery_depth_accepts_explicit_value() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+discovery_depth = 8
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let config = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap();
+
+    assert_eq!(config.skill_sources()[0].discovery_depth().as_u8(), 8);
+}
+
+#[test]
+fn skill_source_config_rejects_discovery_depth_zero() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+discovery_depth = 0
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::InvalidFieldValue {
+            field: "skill_sources[].discovery_depth",
+            value,
+            ..
+        }) if value == "0"
+    ));
+}
+
+#[test]
+fn skill_source_config_rejects_discovery_depth_above_max() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+discovery_depth = 9
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::InvalidFieldValue {
+            field: "skill_sources[].discovery_depth",
+            value,
+            ..
+        }) if value == "9"
+    ));
 }
 
 #[test]
