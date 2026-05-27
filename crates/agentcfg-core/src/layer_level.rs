@@ -4,7 +4,7 @@
 //! policy types belong in the module that owns that behavior.
 
 /// A **Config Layer**: Shared Project Config, User Project Config, or User Config.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ConfigLayer {
     SharedProject,
     UserProject,

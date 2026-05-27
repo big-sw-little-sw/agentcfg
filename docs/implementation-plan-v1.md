@@ -1,6 +1,6 @@
 # agentcfg V1 Implementation Plan
 
-This document breaks V1 into implementation milestones. Product intent lives in [prd.md](prd.md); technical contracts live in [design-v1.md](design-v1.md). If this plan conflicts with `design-v1.md`, treat `design-v1.md` as authoritative and update the plan.
+This document breaks V1 into implementation milestones. Product intent lives in [prd.md](prd.md); technical contracts live in [design-v1.md](design-v1.md). If this plan conflicts with `design-v1.md`, stop and ask which source to follow for that change; do not assume one document wins over the other.
 
 The plan is optimized for agent execution. Each task should be small enough that an implementation agent has at least 90% confidence it can complete the task from this document, the PRD, and the design doc without needing another design discussion.
 
@@ -10,7 +10,8 @@ The plan is optimized for agent execution. Each task should be small enough that
 - Prefer tasks that produce a compiling, testable state.
 - Do not mix domain logic, persistence, filesystem mutation, and CLI rendering in one task unless the task is explicitly an end-to-end slice.
 - Add tests in the same task as the behavior unless the task is scaffolding only.
-- If a task exposes a hidden design decision, stop and update `design-v1.md` before implementing.
+- If a task exposes a hidden design decision, stop and ask or update `design-v1.md` before implementing.
+- If `design-v1.md` and this plan disagree on the same behavior, stop and ask; do not pick one silently.
 - Keep the core crate skill-first. Share preview/apply/status/prune around structured Desired State for Installed Artifacts, but do not introduce generic Configured Item manager traits, factories, or interfaces before a second Configured Item kind exists.
 - Treat CLI command handlers as adapters into core workflow APIs. As lower-level behavior is implemented, expose focused core APIs for config paths, config parsing, Skill Source resolution, Skill Selection, Desired State, preview operation generation, apply/prune safety, status, and doctor checks. The CLI should not orchestrate those lower-level steps directly.
 - If a future Configured Item-kind-specific CLI selector question appears during V1 work, record it in the post-V1 holding area in `design-v1.md` instead of expanding the V1 boundary.
@@ -269,6 +270,49 @@ Validation:
 rg <terminology-audit-patterns> docs/implementation-plan-v1.md
 ```
 
+### M1.6: Pre-M2 foundations
+
+Goal: stable contributor/agent onboarding, module seams for M2+, and honest CLI behavior before Skill Source discovery work.
+
+#### Task M1.6.1: Toolchain and agent docs
+
+- [x] Pin Rust in `rust-toolchain.toml`.
+- [x] Add stable [AGENTS.md](../AGENTS.md) (no milestone-specific status; point to README § Status).
+- [x] Symlink [CLAUDE.md](../CLAUDE.md) → `AGENTS.md`.
+- [x] Update [README.md](../README.md): implementation status table, concepts → code map, doc links.
+
+Validation:
+
+```sh
+rustup show active-toolchain
+test -L CLAUDE.md && test "$(readlink CLAUDE.md)" = AGENTS.md
+```
+
+#### Task M1.6.2: Core module seams
+
+- [x] Split `workflow` into `init`, `context`, and `types` submodules.
+- [x] Move `config` unit tests to `config/tests.rs` (no extra indentation in that file).
+- [x] Add placeholder modules with module docs only: `desired_state` (`ConfiguredItemKind`, `NamespacedSkillSourceId`), `lockfile`, `manifest`, `install_health`, `skill_source`.
+- [x] `WorkflowContext` resolves paths via `UserDirs` (`config_home`, `state_home`, and `home_dir` for user-level discovery scans).
+
+Validation:
+
+```sh
+cargo test --workspace desired_state namespaced_skill_source
+```
+
+#### Task M1.6.3: Workflow stubs until M5/M6
+
+- [x] `preview`, `apply`, `prune`, `status`, and `doctor` return `UnsupportedError::Feature` (exit 1 via CLI) until implemented.
+- [x] Do not add tests that only assert “not implemented”; remove them when real behavior lands.
+
+#### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
+
+- [ ] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
+- [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
+- [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
+- [x] Tighten init Unmanaged Artifact scan to skill-shaped entries (directories containing `SKILL.md`); warn when user init cannot scan user-level Client Discovery Locations (`HOME` unset).
+
 ### M2: Path Skill Sources and Skill Selection
 
 Goal: resolve Skill Selection from local path Skill Sources without writing Managed State.
@@ -504,6 +548,7 @@ cargo test -p agentcfg-core desired_state
 
 #### Task M5.3: Generate structured preview entries
 
+- [ ] Re-evaluate whether `workflow/types.rs` should split (for example `workflow/types/init.rs` vs preview/apply request types) once preview and apply result fields are defined; avoid a single growing DTO module before adding M5 fields.
 - [ ] Detect Discovery Name Collisions per Client Discovery Location path after Client Discovery Registry resolution.
 - [ ] Merge Discovery Requirements only when selected entries refer to the same locked Source Skill Name and installed hash.
 - [ ] Include Config Layer/Skill Source context in collision diagnostics.
@@ -554,6 +599,7 @@ cargo test -p agentcfg-core manifest
 
 #### Task M6.2: Apply Installed Artifact creates and updates
 
+- [ ] Expose user-level Managed State paths through `WorkflowContext` (delegate to `UserDirs::state_home()` and `ManagedStatePaths::for_user`) so apply/status/prune do not re-read environment variables ad hoc.
 - [ ] Create Client Discovery Location symlinks to Managed Skill Content.
 - [ ] Update manifest-owned symlinks only when the current symlink target matches the manifest `target_path`.
 - [ ] Refuse to overwrite Unmanaged Artifacts or Unexpected Symlink Targets.

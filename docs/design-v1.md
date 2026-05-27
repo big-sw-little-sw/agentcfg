@@ -509,6 +509,11 @@ agentcfg will not modify or remove them.
 
 Adoption/import is out of V1 unless a concrete migration need forces it.
 
+Init scan safety notes (V1):
+
+- Init only **reads** Client Discovery Location roots. If a discovery root path is a symlink, `read_dir` lists the **target** directory; reported paths stay under the logical discovery root name. This can surface filenames from another tree without writing anything. Apply and prune must enforce manifest symlink rules separately (M6).
+- `init` uses `create_dir_all` then `create_new` for config files. If an attacker controls a parent path component as a symlink, the config file could be created outside the intended directory. V1 assumes a trusted local environment; hardening (refuse symlink parents) is deferred until apply writes Client Discovery Locations.
+
 `status` checks managed install-state consistency:
 
 - Installed Artifacts by Client

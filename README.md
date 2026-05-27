@@ -6,7 +6,25 @@ It is designed to consume skills from filesystem or git **Skill Sources**, resol
 
 ## Status
 
-Early implementation stage. The repository contains the V1 PRD and design notes, plus the initial Cargo workspace, CLI command surface, and core workflow stubs.
+The Cargo workspace builds with the pinned toolchain in [rust-toolchain.toml](rust-toolchain.toml).
+
+| Area | State |
+| --- | --- |
+| CLI surface | `init`, `preview`, `apply`, `prune`, `status`, `doctor` wired to core workflows |
+| Config | TOML parse/validate for Skill Sources, Skill Selection, Skill Aliases, clients |
+| Paths | Config layers, lockfiles, Managed State paths, project root discovery |
+| Discovery registry | Built-in Client Discovery Locations (shared `.agents/skills` grouping) |
+| `init` | Creates config; reports **Unmanaged Artifacts** and scan failures; does not write Client Discovery Locations |
+| `preview`, `apply`, `prune`, `status`, `doctor` | Not implemented yet — commands return `unsupported feature` (exit 1) instead of silent success |
+
+Planned soon: path Skill Source discovery (implementation plan M2), then desired state, preview operations, apply, manifest, and status.
+
+## Prerequisites
+
+```sh
+rustup show active-toolchain   # should match rust-toolchain.toml
+cargo test --workspace
+```
 
 ## Goals
 
@@ -26,7 +44,7 @@ Early implementation stage. The repository contains the V1 PRD and design notes,
 - Arbitrary org/team discovery layers.
 - A generic platform for every agent-facing configuration type.
 
-## Planned commands
+## Commands
 
 ```sh
 agentcfg init [--project|--user]
@@ -37,7 +55,24 @@ agentcfg status [--user]
 agentcfg doctor
 ```
 
-`preview` is read-only. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes **Stale Installed Artifacts** and **Stale Discovery Requirements** from Managed State only. `status` reports managed install-state consistency. `doctor` checks environment and configuration readiness.
+`preview` is read-only once implemented. `apply` installs **Locked Desired State** into Managed State and Client Discovery Locations. `prune` removes **Stale Installed Artifacts** and **Stale Discovery Requirements** from Managed State only. `status` reports managed install-state consistency. `doctor` checks environment and configuration readiness.
+
+Repeatable `--client` for `preview`, `apply`, `prune`, and `status` is specified in the PRD and planned in the implementation plan; it is not in the CLI yet.
+
+## Concepts → code
+
+| Term | Where |
+| --- | --- |
+| Config Layer, Persisted Scope Value | `crates/agentcfg-core/src/layer_level.rs`, `config.rs`, `config_paths.rs` |
+| Install Level | `layer_level.rs`, `workflow` requests, CLI `--user` |
+| Skill Source / Selection / Alias (config) | `config.rs`; resolution → `skill_source/` |
+| Client Discovery Location / Registry | `discovery_registry.rs`, `workflow::init` |
+| Managed State paths | `config_paths.rs` (`ManagedStatePaths`) |
+| Desired State / Configured Item | `desired_state.rs` |
+| Lockfile / Manifest | `lockfile.rs`, `manifest.rs` |
+| Preview / Apply | `workflow` (stubs until later milestones) |
+
+Domain vocabulary: [UBIQUITOUS-LANGUAGE.md](UBIQUITOUS-LANGUAGE.md). Agent policy: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md) points to the same file).
 
 ## Config Layers
 
@@ -77,8 +112,11 @@ Cleanup safety rules:
 
 ## Documentation
 
+- [Ubiquitous language](UBIQUITOUS-LANGUAGE.md)
 - [PRD](docs/prd.md)
 - [V1 design](docs/design-v1.md)
+- [V1 implementation plan](docs/implementation-plan-v1.md)
+- [Agent instructions](AGENTS.md)
 
 ## License
 

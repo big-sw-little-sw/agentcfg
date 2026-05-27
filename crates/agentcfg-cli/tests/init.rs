@@ -67,6 +67,51 @@ fn init_refuses_to_overwrite_existing_config() {
 }
 
 #[test]
+fn user_init_reports_unmanaged_artifacts_under_home() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_home = temp.path().join("xdg-config");
+    let state_home = temp.path().join("xdg-state");
+    let home = temp.path().join("home");
+    let skill = home.join(".agents").join("skills").join("review");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(skill.join("SKILL.md"), "review").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agentcfg"))
+        .args(["init", "--user"])
+        .current_dir(temp.path())
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env("XDG_STATE_HOME", &state_home)
+        .env("HOME", &home)
+        .output()
+        .expect("failed to run agentcfg");
+
+    assert_success(&output);
+    let stderr = stderr(&output);
+    assert!(stderr.contains("warning: Unmanaged Artifact exists"));
+    assert!(stderr.contains("review"));
+    assert!(stderr.contains("(codex, cursor, opencode, pi)"));
+}
+
+#[test]
+fn user_init_warns_when_home_is_unset_for_discovery_scan() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_home = temp.path().join("xdg-config");
+    let state_home = temp.path().join("xdg-state");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agentcfg"))
+        .args(["init", "--user"])
+        .current_dir(temp.path())
+        .env("XDG_CONFIG_HOME", &config_home)
+        .env("XDG_STATE_HOME", &state_home)
+        .env_remove("HOME")
+        .output()
+        .expect("failed to run agentcfg");
+
+    assert_success(&output);
+    assert!(stderr(&output).contains("user-level Client Discovery Locations were not scanned"));
+}
+
+#[test]
 fn init_reports_unmanaged_artifacts_without_modifying_discovery_locations() {
     let temp = tempfile::tempdir().unwrap();
     let skill = temp.path().join(".agents").join("skills").join("review");
@@ -77,7 +122,7 @@ fn init_reports_unmanaged_artifacts_without_modifying_discovery_locations() {
 
     assert_success(&output);
     let stderr = stderr(&output);
-    assert!(stderr.contains("warning: unmanaged artifact exists"));
+    assert!(stderr.contains("warning: Unmanaged Artifact exists"));
     assert!(stderr.contains("review"));
     assert!(stderr.contains("(codex, cursor, opencode, pi)"));
     assert_eq!(

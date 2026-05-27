@@ -1,256 +1,27 @@
-//! User workflow entrypoints for the CLI and future frontends.
-//!
-//! Preview and apply orchestrate resolution of **Locked Desired State** into
-//! **Managed State** and **Client Discovery Locations**. V1 stubs return
-//! placeholder results until preview operation generation and apply are implemented.
-//!
-//! **Status** reports managed install-state consistency for an Install Level.
-//! **Doctor** reports environment and configuration readiness; it does not
-//! replace **Status** for install-state reporting.
-//!
-//! **Prune** removes **Stale Discovery Requirements** and **Stale Installed
-//! Artifacts** from Managed State when removal is safe.
-//!
-//! These functions are orchestration boundaries, not the lower-level
-//! config, preview operation, apply, status, or diagnostic APIs. Those focused APIs
-//! should be added when they are needed by implemented behavior.
-
-use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::config::parse_config_str;
-use crate::config_paths::{ConfigFilePaths, UserDirs, discover_project_root};
+use crate::config_paths::{ConfigFilePaths, discover_project_root};
 use crate::discovery_registry::{
     ClientDiscoveryLocation, project_client_discovery_locations, user_client_discovery_locations,
 };
-pub use crate::layer_level::{ConfigLayer, InstallLevel};
+use crate::layer_level::ConfigLayer;
 use crate::{Error, InitError, Result};
 
-/// How preview/apply move from **Desired State** to **Locked Desired State** via lockfiles.
-///
-/// Active Config Layers express **Desired State**; lockfiles record **Locked Desired State**
-/// for Configured Items that need repeatable Skill Source resolution.
-///
-/// - [`UseLocked`]: use **Locked Desired State** from the active lockfile without Source Refresh.
-/// - [`RefreshSources`]: perform **Source Refresh** to refresh Skill Source resolutions before
-///   producing updated **Locked Desired State** and materializing **Managed Skill Content**.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SkillSourceResolutionPolicy {
-    UseLocked,
-    RefreshSources,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitRequest {
-    pub config_layer: ConfigLayer,
-}
-
-impl InitRequest {
-    pub fn new(config_layer: ConfigLayer) -> Self {
-        Self { config_layer }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct InitResult {
-    pub config_file: PathBuf,
-    pub warnings: Vec<InitWarning>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum InitWarning {
-    UnmanagedArtifact(UnmanagedArtifact),
-    ClientDiscoveryLocationReadFailure(ClientDiscoveryLocationReadFailure),
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct UnmanagedArtifact {
-    pub clients: Vec<&'static str>,
-    pub install_level: InstallLevel,
-    pub path: PathBuf,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ClientDiscoveryLocationReadFailure {
-    pub clients: Vec<&'static str>,
-    pub install_level: InstallLevel,
-    pub path: PathBuf,
-    pub error: String,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct DiscoveryLocationInspection {
-    unmanaged_artifacts: Vec<UnmanagedArtifact>,
-    read_failures: Vec<ClientDiscoveryLocationReadFailure>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PreviewRequest {
-    pub install_level: InstallLevel,
-    pub skill_source_resolution: SkillSourceResolutionPolicy,
-}
-
-impl PreviewRequest {
-    pub fn new(
-        install_level: InstallLevel,
-        skill_source_resolution: SkillSourceResolutionPolicy,
-    ) -> Self {
-        Self {
-            install_level,
-            skill_source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PreviewResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ApplyRequest {
-    pub install_level: InstallLevel,
-    pub skill_source_resolution: SkillSourceResolutionPolicy,
-}
-
-impl ApplyRequest {
-    pub fn new(
-        install_level: InstallLevel,
-        skill_source_resolution: SkillSourceResolutionPolicy,
-    ) -> Self {
-        Self {
-            install_level,
-            skill_source_resolution,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct ApplyResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneRequest {
-    pub install_level: InstallLevel,
-}
-
-impl PruneRequest {
-    pub fn new(install_level: InstallLevel) -> Self {
-        Self { install_level }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct PruneResult {}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusRequest {
-    pub install_level: InstallLevel,
-}
-
-impl StatusRequest {
-    pub fn new(install_level: InstallLevel) -> Self {
-        Self { install_level }
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct StatusResult {}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorRequest {}
-
-impl DoctorRequest {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-#[non_exhaustive]
-pub struct DoctorResult {}
+use super::context::WorkflowContext;
+use super::types::{
+    ClientDiscoveryLocationReadFailure, InitRequest, InitResult, InitWarning, UnmanagedArtifact,
+    UserClientDiscoveryLocationsNotScanned,
+};
 
 pub fn init(request: InitRequest) -> Result<InitResult> {
     let context = WorkflowContext::from_process()?;
     init_with_context(request, &context)
 }
 
-pub fn preview(_request: PreviewRequest) -> Result<PreviewResult> {
-    Ok(PreviewResult {})
-}
-
-pub fn apply(_request: ApplyRequest) -> Result<ApplyResult> {
-    Ok(ApplyResult {})
-}
-
-pub fn prune(_request: PruneRequest) -> Result<PruneResult> {
-    Ok(PruneResult {})
-}
-
-pub fn status(_request: StatusRequest) -> Result<StatusResult> {
-    Ok(StatusResult {})
-}
-
-pub fn doctor(_request: DoctorRequest) -> Result<DoctorResult> {
-    Ok(DoctorResult {})
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct WorkflowContext {
-    cwd: PathBuf,
-    xdg_config_home: Option<PathBuf>,
-    home_dir: Option<PathBuf>,
-}
-
-impl WorkflowContext {
-    fn from_process() -> Result<Self> {
-        let cwd = env::current_dir().map_err(|source| Error::Io {
-            path: PathBuf::from("."),
-            source,
-        })?;
-
-        Ok(Self::new(
-            cwd,
-            env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
-            env::var_os("HOME").map(PathBuf::from),
-        ))
-    }
-
-    fn new(
-        cwd: impl Into<PathBuf>,
-        xdg_config_home: Option<impl Into<PathBuf>>,
-        home_dir: Option<impl Into<PathBuf>>,
-    ) -> Self {
-        Self {
-            cwd: cwd.into(),
-            xdg_config_home: xdg_config_home.map(Into::into),
-            home_dir: home_dir.map(Into::into),
-        }
-    }
-
-    fn user_config_home(&self) -> Result<PathBuf> {
-        UserDirs::config_home_from_env_vars(self.xdg_config_home.clone(), self.home_dir.clone())
-    }
-
-    fn home_dir(&self) -> Option<&Path> {
-        self.home_dir.as_deref()
-    }
-}
-
-fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<InitResult> {
+pub(crate) fn init_with_context(request: InitRequest, context: &WorkflowContext) -> Result<InitResult> {
     let config_paths = init_config_paths(request.config_layer, context)?;
     let contents = starter_config_contents(request.config_layer);
 
@@ -281,12 +52,12 @@ fn init_config_paths(layer: ConfigLayer, context: &WorkflowContext) -> Result<Co
             Ok(ConfigFilePaths::for_user_project(project_root))
         }
         ConfigLayer::User => Ok(ConfigFilePaths::for_user_config_home(
-            context.user_config_home()?,
+            context.user_config_home(),
         )),
     }
 }
 
-fn starter_config_contents(layer: ConfigLayer) -> String {
+pub(crate) fn starter_config_contents(layer: ConfigLayer) -> String {
     format!(
         "scope = \"{}\"\n\n[skills]\nclients = \"all\"\n",
         layer.persisted_scope_value()
@@ -328,26 +99,37 @@ fn create_config_file(path: &Path, layer: ConfigLayer, contents: &str) -> Result
         })
 }
 
+#[derive(Clone, Debug, Default)]
+struct DiscoveryLocationInspection {
+    unmanaged_artifacts: Vec<UnmanagedArtifact>,
+    read_failures: Vec<ClientDiscoveryLocationReadFailure>,
+    user_discovery_not_scanned: Option<UserClientDiscoveryLocationsNotScanned>,
+}
+
 fn inspect_existing_discovery_locations(
     layer: ConfigLayer,
     context: &WorkflowContext,
 ) -> DiscoveryLocationInspection {
+    let mut inspection = DiscoveryLocationInspection::default();
+
     let locations = match layer {
         ConfigLayer::SharedProject | ConfigLayer::UserProject => {
-            let Ok(project_root) = discover_project_root(&context.cwd) else {
-                return DiscoveryLocationInspection::default();
-            };
+            let project_root = discover_project_root(&context.cwd)
+                .unwrap_or_else(|_| context.cwd.clone());
             project_client_discovery_locations(&project_root)
         }
         ConfigLayer::User => {
             let Some(home_dir) = context.home_dir() else {
-                return DiscoveryLocationInspection::default();
+                inspection.user_discovery_not_scanned =
+                    Some(UserClientDiscoveryLocationsNotScanned {
+                        message: "HOME is not set; user-level Client Discovery Locations were not scanned",
+                    });
+                return inspection;
             };
             user_client_discovery_locations(home_dir)
         }
     };
 
-    let mut inspection = DiscoveryLocationInspection::default();
     for location in locations {
         match scan_discovery_location(&location) {
             Ok(artifacts) => inspection.unmanaged_artifacts.extend(artifacts),
@@ -360,9 +142,15 @@ fn inspect_existing_discovery_locations(
 
 fn init_warnings_from(inspection: DiscoveryLocationInspection) -> Vec<InitWarning> {
     inspection
-        .read_failures
+        .user_discovery_not_scanned
         .into_iter()
-        .map(InitWarning::ClientDiscoveryLocationReadFailure)
+        .map(InitWarning::UserClientDiscoveryLocationsNotScanned)
+        .chain(
+            inspection
+                .read_failures
+                .into_iter()
+                .map(InitWarning::ClientDiscoveryLocationReadFailure),
+        )
         .chain(
             inspection
                 .unmanaged_artifacts
@@ -386,11 +174,20 @@ fn scan_discovery_location(
     let mut artifacts = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|source| scan_failure(location, source))?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        if fs::metadata(path.join("SKILL.md")).is_err() {
+            continue;
+        }
 
         artifacts.push(UnmanagedArtifact {
             clients: location.clients.clone(),
             install_level: location.install_level,
-            path: entry.path(),
+            path,
         });
     }
 
@@ -412,8 +209,14 @@ fn scan_failure(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
     use super::*;
     use crate::config::parse_config_str;
+    use crate::config_paths::UserDirs;
+    use crate::layer_level::InstallLevel;
+    use crate::{Error, InitError};
 
     #[test]
     fn starter_configs_parse_for_all_layers() {
@@ -461,10 +264,14 @@ mod tests {
     fn user_init_creates_user_config_without_project_agentcfg_dir() {
         let temp = tempfile::tempdir().unwrap();
         let config_home = temp.path().join("xdg-config");
+        let state_home = temp.path().join("xdg-state");
         let context = WorkflowContext::new(
             temp.path(),
-            Some(config_home.clone()),
-            Some(temp.path().join("home")),
+            UserDirs::new(
+                config_home.clone(),
+                state_home,
+                Some(temp.path().join("home")),
+            ),
         );
 
         let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
@@ -505,6 +312,7 @@ mod tests {
         fs::create_dir_all(&agents_skill).unwrap();
         fs::create_dir_all(&claude_skill).unwrap();
         fs::write(agents_skill.join("SKILL.md"), "review").unwrap();
+        fs::write(claude_skill.join("SKILL.md"), "docs").unwrap();
         let context = context_for_project(temp.path());
 
         let result =
@@ -519,14 +327,89 @@ mod tests {
         assert_artifact(
             &artifacts,
             &["codex", "cursor", "opencode", "pi"],
+            InstallLevel::Project,
             &agents_skill,
         );
-        assert_artifact(&artifacts, &["claude"], &claude_skill);
+        assert_artifact(
+            &artifacts,
+            &["claude"],
+            InstallLevel::Project,
+            &claude_skill,
+        );
         assert_eq!(
             fs::read_to_string(agents_skill.join("SKILL.md")).unwrap(),
             "review"
         );
         assert!(!temp.path().join(".cline").exists());
+    }
+
+    #[test]
+    fn non_skill_directory_is_not_reported_as_unmanaged_artifact() {
+        let temp = tempfile::tempdir().unwrap();
+        let agents_skills = temp.path().join(".agents").join("skills");
+        let draft = agents_skills.join("draft-notes");
+        fs::create_dir_all(&draft).unwrap();
+        let context = context_for_project(temp.path());
+
+        let result =
+            init_with_context(InitRequest::new(ConfigLayer::SharedProject), &context).unwrap();
+
+        assert!(
+            unmanaged_artifacts(&result).is_empty(),
+            "non-skill directory should not be reported: {:?}",
+            result.warnings
+        );
+    }
+
+    #[test]
+    fn user_init_reports_unmanaged_artifacts_at_user_install_level() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let skill = home.join(".agents").join("skills").join("review");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), "review").unwrap();
+
+        let context = WorkflowContext::new(
+            temp.path(),
+            UserDirs::new(
+                temp.path().join("xdg-config"),
+                temp.path().join("xdg-state"),
+                Some(home),
+            ),
+        );
+
+        let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
+
+        let artifacts = unmanaged_artifacts(&result);
+        assert_eq!(artifacts.len(), 1);
+        assert_artifact(
+            &artifacts,
+            &["codex", "cursor", "opencode", "pi"],
+            InstallLevel::User,
+            &skill,
+        );
+    }
+
+    #[test]
+    fn user_init_warns_when_home_is_unavailable_for_discovery_scan() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_home = temp.path().join("xdg-config");
+        let state_home = temp.path().join("xdg-state");
+        let context = WorkflowContext::new(
+            temp.path(),
+            UserDirs::new(config_home, state_home, None::<PathBuf>),
+        );
+
+        let result = init_with_context(InitRequest::new(ConfigLayer::User), &context).unwrap();
+
+        assert!(
+            result.warnings.iter().any(|warning| matches!(
+                warning,
+                InitWarning::UserClientDiscoveryLocationsNotScanned(_)
+            )),
+            "expected scan skip warning, got {:?}",
+            result.warnings
+        );
     }
 
     #[test]
@@ -605,10 +488,14 @@ mod tests {
     }
 
     fn context_for_project(project_root: &Path) -> WorkflowContext {
+        let home = project_root.join("home");
         WorkflowContext::new(
             project_root,
-            None::<PathBuf>,
-            Some(project_root.join("home")),
+            UserDirs::new(
+                home.join(".config"),
+                home.join(".local/state"),
+                Some(home),
+            ),
         )
     }
 
@@ -626,15 +513,21 @@ mod tests {
             .iter()
             .filter_map(|warning| match warning {
                 InitWarning::UnmanagedArtifact(artifact) => Some(artifact.clone()),
-                InitWarning::ClientDiscoveryLocationReadFailure(_) => None,
+                InitWarning::ClientDiscoveryLocationReadFailure(_)
+                | InitWarning::UserClientDiscoveryLocationsNotScanned(_) => None,
             })
             .collect()
     }
 
-    fn assert_artifact(artifacts: &[UnmanagedArtifact], clients: &[&str], path: &Path) {
+    fn assert_artifact(
+        artifacts: &[UnmanagedArtifact],
+        clients: &[&str],
+        install_level: InstallLevel,
+        path: &Path,
+    ) {
         assert!(
             artifacts.iter().any(|artifact| artifact.clients == clients
-                && artifact.install_level == InstallLevel::Project
+                && artifact.install_level == install_level
                 && artifact.path == path),
             "missing artifact for {clients:?} at {} in {artifacts:?}",
             path.display()

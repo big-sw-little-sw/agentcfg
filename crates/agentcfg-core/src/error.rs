@@ -133,6 +133,9 @@ pub enum SkillSourceError {
 pub enum PathEnvironmentError {
     #[error("HOME is required to resolve the default for {xdg_var}; set HOME or {xdg_var}")]
     MissingHomeForXdgFallback { xdg_var: &'static str },
+
+    #[error("HOME must be an absolute path for Client Discovery Location resolution; set HOME to an absolute path")]
+    HomeNotAbsolute,
 }
 
 #[derive(Debug, thiserror::Error)]
