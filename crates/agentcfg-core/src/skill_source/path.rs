@@ -343,9 +343,12 @@ mod tests {
         configured_path: &Path,
         discovery_depth: u8,
     ) -> Result<DiscoveredSkillsInPathSource> {
+        let config_dir = tempfile::tempdir().unwrap();
+        let config_file = config_dir.path().join("agentcfg.toml");
+
         discover_skills_in_source(
             skill_source_id,
-            Path::new("/tmp/agentcfg.toml"),
+            &config_file,
             configured_path,
             DiscoveryDepth::try_from_u8(discovery_depth).unwrap(),
         )
