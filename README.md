@@ -74,7 +74,7 @@ Repeatable `--client` for `preview`, `apply`, `prune`, and `status` is specified
 | Lockfile / Manifest | `lockfile.rs`, `manifest.rs` |
 | Preview / Apply | `workflow` (stubs until later milestones) |
 
-Domain vocabulary: [UBIQUITOUS-LANGUAGE.md](UBIQUITOUS-LANGUAGE.md). Agent policy: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md) points to the same file).
+Domain vocabulary: [CONTEXT.md](CONTEXT.md). Agent policy: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md) points to the same file).
 
 ## Config Layers
 
@@ -114,7 +114,7 @@ Cleanup safety rules:
 
 ## Documentation
 
-- [Ubiquitous language](UBIQUITOUS-LANGUAGE.md)
+- [Context](CONTEXT.md)
 - [PRD](docs/prd.md)
 - [V1 design](docs/design-v1.md)
 - [V1 implementation plan](docs/implementation-plan-v1.md)
