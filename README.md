@@ -11,14 +11,15 @@ The Cargo workspace builds with the pinned toolchain in [rust-toolchain.toml](ru
 | Area | State |
 | --- | --- |
 | CLI surface | `init`, `preview`, `apply`, `prune`, `status`, `doctor` wired to core workflows |
-| Config | TOML parse/validate for Skill Sources, Skill Selection, Skill Aliases, clients |
+| Config | TOML parse/validate for Skill Sources, Skill Selection, Skill Groups, Skill Aliases, clients |
 | Paths | Config layers, lockfiles, Managed State paths, project root discovery |
 | Path Skill Source discovery | Discovers `SKILL.md` directories with bounded depth, relative path resolution, hidden/symlink traversal rules, duplicate Source Skill Name diagnostics |
+| Skill Selection | Resolves path Skill Source includes and Skill Groups from strict root `skills.toml` metadata |
 | Discovery registry | Built-in Client Discovery Locations (shared `.agents/skills` grouping) |
 | `init` | Creates config; reports **Unmanaged Artifacts** and scan failures; does not write Client Discovery Locations |
 | `preview`, `apply`, `prune`, `status`, `doctor` | Not implemented yet — commands return `unsupported feature` (exit 1) instead of silent success |
 
-Planned soon: Skill Selection for discovered path Skill Sources (implementation plan M2.2), then desired state, preview operations, apply, manifest, and status.
+Planned soon: Skill Aliases and Discovery Names (implementation plan M2.4), then desired state, preview operations, apply, manifest, and status.
 
 ## Prerequisites
 

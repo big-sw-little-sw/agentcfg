@@ -144,6 +144,8 @@ Rules:
 - **Skill Selection** lives only under `[[skill_sources]]`.
 - `include` is an optional list of **Included Skills** (Source Skill Names) from that Skill Source.
 - `groups` is an optional list of **Skill Group** names from that Skill Source's `skills.toml`.
+- `include` and `groups` are unioned when both are present. If they select the same Source Skill Name more than once, the Skill is selected once.
+- Successful Skill Selection output preserves source identity only: Config Layer, Skill Source id, Source Skill Name, and skill directory path. It does not preserve whether a Skill was selected through `include`, `groups`, or both.
 - If neither `include` nor `groups` is set, select all discovered skills from that Skill Source.
 - `exclude` is out of V1.
 - Missing `[skills].clients` is a validation error.
@@ -199,8 +201,12 @@ Discovery depth and traversal:
 Skill Source metadata:
 
 - `skills.toml` at the Skill Source root is optional; do not read `skills.toml` from organizational subdirectories.
+- `skills.toml` is read and validated only when a Skill Source selects one or more Skill Groups.
 - Skills in **Agent Skill Format** can be inferred from directories containing `SKILL.md`.
 - `skills.toml` may define Skill Source-local Skill Groups.
+- `skills.toml` is selection metadata for the Skill Source. It is not part of any individual Skill and is not copied into per-Skill Managed Skill Content unless a later design explicitly adds source metadata provenance.
+- A selected Skill Group that is not defined is reported as a missing Skill Group. Diagnostics should distinguish whether the root `skills.toml` is absent or present but does not define the group.
+- Skill Group names and Source Skill Name members are case-sensitive exact matches.
 
 V1 `skills.toml` schema:
 
@@ -214,6 +220,18 @@ design = [
 ```
 
 Skill Groups are namespaced by Skill Source. Two Skill Sources may both define `design`.
+
+When `skills.toml` is read, V1 treats it as a strict Skill Source metadata contract:
+
+- Only the top-level `[groups]` table is supported.
+- Unknown top-level keys are rejected.
+- An empty `skills.toml`, or a `skills.toml` without `[groups]`, is valid metadata that defines zero Skill Groups. Selected groups are then reported as missing from present metadata.
+- Group names must be non-empty and must not contain leading or trailing whitespace.
+- Group member lists must be non-empty.
+- Group members are Source Skill Name references. They must be non-empty, must not contain leading or trailing whitespace, and must not repeat within one group.
+- Group members are required to match discovered Source Skill Names only for selected Skill Groups. Unselected Skill Groups may contain Source Skill Name references that are not currently discovered.
+- Duplicate group names are invalid. If the TOML parser reports duplicate keys, surface the parse failure as Skill Source metadata failure.
+- Nested groups, inherited groups, and config-local group definitions are out of V1.
 
 ## Artifact Model
 

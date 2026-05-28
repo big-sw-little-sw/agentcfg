@@ -359,18 +359,30 @@ cargo test -p agentcfg-core skill_selection
 
 #### Task M2.3: Resolve Skill Source-local Skill Groups
 
-- [ ] Parse optional `skills.toml` only at the resolved Skill Source root (not under organizational subdirectories).
-- [ ] Validate `groups` entries as Skill Group references: reject empty values, leading/trailing whitespace, and duplicates.
-- [ ] Add Skill Group expansion on top of M2.2 source-identity Skill Selection output; M2.2 does not resolve `groups`.
-- [ ] Resolve selected `groups` into Source Skill Names.
-- [ ] Report missing Skill Groups and Skill Group references to missing Source Skill Names.
-- [ ] Merge `include` and `groups` deterministically.
-- [ ] Add tests for valid Skill Groups, missing Skill Groups, and missing Skill Group members.
+- [x] Validate config `groups` entries as Skill Group references in `config.rs`, using the same policy shape as `include`: reject empty values, leading/trailing whitespace, duplicates, and explicit empty lists.
+- [x] Add a focused Skill Source metadata module for root `skills.toml`; do not put `skills.toml` parsing in `config.rs`.
+- [x] Parse optional `skills.toml` only at the resolved Skill Source root (not under organizational subdirectories), and only when that Skill Source selects one or more groups.
+- [x] Support only the strict V1 `skills.toml` schema: top-level `[groups]` table mapping Skill Group names to non-empty Source Skill Name arrays.
+- [x] Treat an empty `skills.toml` or a present `skills.toml` without `[groups]` as valid metadata that defines zero Skill Groups; selected groups are reported as missing from present metadata.
+- [x] Reject unknown `skills.toml` keys, empty/whitespace group names, empty group member lists, empty/whitespace members, duplicate members within a group, and malformed TOML as Skill Source metadata failures.
+- [x] Add Skill Group expansion on top of M2.2 source-identity Skill Selection output; M2.2 does not resolve `groups`.
+- [x] Resolve selected `groups` into Source Skill Names using case-sensitive exact matching.
+- [x] Validate missing Source Skill Name members only for selected Skill Groups. Unselected Skill Groups may reference undiscovered Source Skill Names.
+- [x] Treat `include` and `groups` as an independent union: if both select the same Source Skill Name, select it once.
+- [x] Preserve M2.2's source-identity Skill Selection output shape. Do not add selection-reason provenance (`include` vs `groups`) to `SelectedSkill`.
+- [x] Treat root `skills.toml` as Skill Source selection metadata only. Do not make it part of selected Skill directories or Managed Skill Content in M2.3.
+- [x] Report missing Skill Groups and Skill Group references to missing Source Skill Names with Skill Source and Config Layer context. Missing Skill Group diagnostics should distinguish absent root `skills.toml` from present metadata that does not define the group.
+- [x] Collect semantic selection and metadata errors across inputs where possible: missing Included Skills, missing Skill Groups, invalid group definitions, and missing Skill Group members. Malformed TOML may short-circuit that Skill Source.
+- [x] Sort aggregate error details deterministically by Config Layer, Skill Source id, and relevant Skill Group or Source Skill Name.
+- [x] Keep `EmptyDiscovery` warnings limited to implicit all-skills selection; explicit `include` or `groups` failures should be errors.
+- [x] Merge selected output deterministically by Config Layer, Skill Source id, and Source Skill Name.
+- [x] Add tests for valid Skill Groups, missing root `skills.toml` with selected groups, missing Skill Groups, invalid `skills.toml`, missing Skill Group members, `include`+`groups` union/deduplication, and deterministic output.
 
 Validation:
 
 ```sh
 cargo test -p agentcfg-core skill_source_groups
+cargo test -p agentcfg-core skill_selection
 ```
 
 #### Task M2.4: Apply Skill Aliases and produce Discovery Names
@@ -551,7 +563,7 @@ cargo test -p agentcfg-core discovery_registry
 - [ ] Treat omitted `--client` as all Clients selected by active Config Layers.
 - [ ] Validate that each requested `--client` is both a known V1 Client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 Client. Do not let CLI flags add Clients outside the configured selection.
 - [ ] Convert Skill Selection output into structured Desired State entries for Installed Artifacts before previewing apply changes.
-- [ ] Include configured item kind, Client Discovery Location path, symlink mode, Managed Skill Content path, Discovery Name, installed hash, Skill Source/Config Layer provenance, and Discovery Requirements keyed by Config Layer, Client, and Install Level.
+- [ ] Include configured item kind, Client Discovery Location path, symlink mode, Managed Skill Content path, Discovery Name, installed hash, Skill Source/Config Layer provenance, and Discovery Requirements keyed by Config Layer, Client, and Install Level. Do not require `include`/`groups` selection-reason provenance from Skill Selection output.
 - [ ] Expose Desired State construction as a lower-level core API that `preview`, `apply`, `status`, and `prune` can share.
 - [ ] Add tests for project layering, user-only mode, and shared Client Discovery Location Discovery Requirements.
 
