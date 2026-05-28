@@ -75,82 +75,124 @@ fn validate_groups_metadata(
     skills_toml: &Path,
     groups: BTreeMap<String, Vec<String>>,
 ) -> std::result::Result<BTreeMap<String, Vec<String>>, SkillGroupsMetadataError> {
-    let mut validated = BTreeMap::new();
-    let mut invalid = Vec::new();
+    let outcomes = groups
+        .into_iter()
+        .map(|(group_name, members)| validate_group_metadata(skills_toml, group_name, members));
 
-    for (group_name, members) in groups {
-        if group_name.is_empty() {
-            invalid.push(invalid_definition(
-                skills_toml,
-                None,
-                InvalidSkillGroupDefinitionReason::EmptyGroupName,
-            ));
-            continue;
-        }
-        if group_name != group_name.trim() {
-            invalid.push(invalid_definition(
-                skills_toml,
-                Some(group_name),
-                InvalidSkillGroupDefinitionReason::WhitespaceGroupName,
-            ));
-            continue;
-        }
-        if members.is_empty() {
-            invalid.push(invalid_definition(
-                skills_toml,
-                Some(group_name),
-                InvalidSkillGroupDefinitionReason::EmptyMemberList,
-            ));
-            continue;
-        }
-
-        let mut seen_members = BTreeSet::new();
-        let mut member_errors = false;
-        for member in members {
-            if member.is_empty() {
-                invalid.push(invalid_definition(
-                    skills_toml,
-                    Some(group_name.clone()),
-                    InvalidSkillGroupDefinitionReason::EmptyMember,
-                ));
-                member_errors = true;
-                continue;
-            }
-            if member != member.trim() {
-                invalid.push(invalid_definition(
-                    skills_toml,
-                    Some(group_name.clone()),
-                    InvalidSkillGroupDefinitionReason::WhitespaceMember,
-                ));
-                member_errors = true;
-                continue;
-            }
-            if !seen_members.insert(member.clone()) {
-                invalid.push(invalid_definition(
-                    skills_toml,
-                    Some(group_name.clone()),
-                    InvalidSkillGroupDefinitionReason::DuplicateMember,
-                ));
-                member_errors = true;
-            }
-        }
-
-        if member_errors {
-            continue;
-        }
-
-        validated.insert(group_name, seen_members.into_iter().collect());
-    }
+    let (validated, invalid) = split_group_validation_outcomes(outcomes);
 
     if !invalid.is_empty() {
-        invalid.sort_by(|left, right| {
-            (left.skill_group_name.as_deref(), left.reason)
-                .cmp(&(right.skill_group_name.as_deref(), right.reason))
-        });
-        return Err(SkillGroupsMetadataError::InvalidDefinitions(invalid));
+        return Err(SkillGroupsMetadataError::InvalidDefinitions(
+            sorted_invalid_definitions(invalid),
+        ));
     }
 
     Ok(validated)
+}
+
+type GroupValidationOutcome =
+    std::result::Result<(String, Vec<String>), Vec<InvalidSkillGroupDefinitionFact>>;
+
+fn validate_group_metadata(
+    skills_toml: &Path,
+    group_name: String,
+    members: Vec<String>,
+) -> GroupValidationOutcome {
+    if group_name.is_empty() {
+        return Err(vec![invalid_definition(
+            skills_toml,
+            None,
+            InvalidSkillGroupDefinitionReason::EmptyGroupName,
+        )]);
+    }
+    if group_name != group_name.trim() {
+        return Err(vec![invalid_definition(
+            skills_toml,
+            Some(group_name),
+            InvalidSkillGroupDefinitionReason::WhitespaceGroupName,
+        )]);
+    }
+    if members.is_empty() {
+        return Err(vec![invalid_definition(
+            skills_toml,
+            Some(group_name),
+            InvalidSkillGroupDefinitionReason::EmptyMemberList,
+        )]);
+    }
+
+    validate_group_members(skills_toml, &group_name, members).map(|members| (group_name, members))
+}
+
+fn validate_group_members(
+    skills_toml: &Path,
+    group_name: &str,
+    members: Vec<String>,
+) -> std::result::Result<Vec<String>, Vec<InvalidSkillGroupDefinitionFact>> {
+    let mut validated = BTreeSet::new();
+    let mut invalid = Vec::new();
+
+    for member in members {
+        if member.is_empty() {
+            invalid.push(invalid_definition(
+                skills_toml,
+                Some(group_name.to_string()),
+                InvalidSkillGroupDefinitionReason::EmptyMember,
+            ));
+            continue;
+        }
+        if member != member.trim() {
+            invalid.push(invalid_definition(
+                skills_toml,
+                Some(group_name.to_string()),
+                InvalidSkillGroupDefinitionReason::WhitespaceMember,
+            ));
+            continue;
+        }
+        if !validated.insert(member.clone()) {
+            invalid.push(invalid_definition(
+                skills_toml,
+                Some(group_name.to_string()),
+                InvalidSkillGroupDefinitionReason::DuplicateMember,
+            ));
+        }
+    }
+
+    if invalid.is_empty() {
+        Ok(validated.into_iter().collect())
+    } else {
+        Err(invalid)
+    }
+}
+
+fn split_group_validation_outcomes(
+    outcomes: impl IntoIterator<Item = GroupValidationOutcome>,
+) -> (
+    BTreeMap<String, Vec<String>>,
+    Vec<InvalidSkillGroupDefinitionFact>,
+) {
+    let mut validated = BTreeMap::new();
+    let mut invalid = Vec::new();
+
+    for outcome in outcomes {
+        match outcome {
+            Ok((group_name, members)) => {
+                validated.insert(group_name, members);
+            }
+            Err(mut errors) => invalid.append(&mut errors),
+        }
+    }
+
+    (validated, invalid)
+}
+
+fn sorted_invalid_definitions(
+    mut invalid: Vec<InvalidSkillGroupDefinitionFact>,
+) -> Vec<InvalidSkillGroupDefinitionFact> {
+    invalid.sort_by(|left, right| {
+        (left.skill_group_name.as_deref(), left.reason)
+            .cmp(&(right.skill_group_name.as_deref(), right.reason))
+    });
+    invalid
 }
 
 fn invalid_definition(
