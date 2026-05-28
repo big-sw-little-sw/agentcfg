@@ -4,7 +4,7 @@
 
 ## Read first
 
-1. [UBIQUITOUS-LANGUAGE.md](UBIQUITOUS-LANGUAGE.md) — canonical terms for user-facing strings and new APIs.
+1. [CONTEXT.md](CONTEXT.md) — canonical terms for user-facing strings and new APIs.
 2. [docs/design-v1.md](docs/design-v1.md) — persisted contracts and safety rules.
 3. [docs/implementation-plan-v1.md](docs/implementation-plan-v1.md) — milestones and task boundaries for the work you are doing.
 4. [docs/prd.md](docs/prd.md) — product intent and command behavior.
