@@ -174,16 +174,73 @@ pub enum SkillSourceError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SkillSelectionError {
-    #[error("Included Skill not found in Skill Source")]
-    MissingIncludedSkills {
-        missing: Vec<MissingIncludedSkill>,
+    #[error("Skill Selection is invalid")]
+    InvalidSelection {
+        missing_included_skills: Vec<MissingIncludedSkill>,
+        missing_skill_groups: Vec<MissingSkillGroup>,
+        invalid_skill_group_definitions: Vec<InvalidSkillGroupDefinition>,
+        missing_skill_group_members: Vec<MissingSkillGroupMember>,
+        metadata_parse_errors: Vec<SkillSourceMetadataParseError>,
     },
+}
+
+#[derive(Debug)]
+pub struct SkillSourceMetadataParseError {
+    pub layer: ConfigLayer,
+    pub skill_source_id: String,
+    pub skills_toml: PathBuf,
+    pub source: toml::de::Error,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MissingIncludedSkill {
     pub layer: ConfigLayer,
     pub skill_source_id: String,
+    pub source_skill_name: String,
+    pub resolved_root: PathBuf,
+    pub discovery_depth: crate::skill_source::DiscoveryDepth,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MissingSkillGroupCause {
+    SkillsTomlAbsent,
+    SkillsTomlPresent,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MissingSkillGroup {
+    pub layer: ConfigLayer,
+    pub skill_source_id: String,
+    pub skill_group_name: String,
+    pub resolved_root: PathBuf,
+    pub skills_toml: PathBuf,
+    pub cause: MissingSkillGroupCause,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum InvalidSkillGroupDefinitionReason {
+    EmptyGroupName,
+    WhitespaceGroupName,
+    EmptyMemberList,
+    EmptyMember,
+    WhitespaceMember,
+    DuplicateMember,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvalidSkillGroupDefinition {
+    pub layer: ConfigLayer,
+    pub skill_source_id: String,
+    pub skill_group_name: Option<String>,
+    pub skills_toml: PathBuf,
+    pub reason: InvalidSkillGroupDefinitionReason,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MissingSkillGroupMember {
+    pub layer: ConfigLayer,
+    pub skill_source_id: String,
+    pub skill_group_name: String,
     pub source_skill_name: String,
     pub resolved_root: PathBuf,
     pub discovery_depth: crate::skill_source::DiscoveryDepth,

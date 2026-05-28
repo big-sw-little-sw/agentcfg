@@ -16,6 +16,8 @@ pub mod workflow;
 
 pub use desired_state::{ConfiguredItemKind, NamespacedSkillSourceId};
 pub use error::{
-    ConfigError, Error, InitError, MissingIncludedSkill, PathEnvironmentError, Result,
-    SkillSelectionError, SkillSourceError, UnsupportedError,
+    ConfigError, Error, InitError, InvalidSkillGroupDefinition, InvalidSkillGroupDefinitionReason,
+    MissingIncludedSkill, MissingSkillGroup, MissingSkillGroupCause, MissingSkillGroupMember,
+    PathEnvironmentError, Result, SkillSelectionError, SkillSourceError,
+    SkillSourceMetadataParseError, UnsupportedError,
 };

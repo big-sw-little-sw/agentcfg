@@ -2,6 +2,7 @@
 //!
 //! Path and git acquisition, hashing, and lockfile integration are implemented in later milestones.
 
+mod groups;
 mod path;
 mod selection;
 

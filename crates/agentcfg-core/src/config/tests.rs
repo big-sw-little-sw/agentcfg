@@ -328,6 +328,93 @@ clients = ["codex"]
 }
 
 #[test]
+fn rejects_empty_string_skill_group() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+groups = [""]
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::InvalidFieldValue {
+            field: "skill_sources[].groups",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn rejects_whitespace_skill_group_names() {
+    for groups in [
+        r#"groups = [" design"]"#,
+        r#"groups = ["design "]"#,
+        r#"groups = [" design "]"#,
+    ] {
+        let contents = format!(
+            r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+{groups}
+
+[skills]
+clients = ["codex"]
+"#
+        );
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", &contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "skill_sources[].groups",
+                ..
+            })
+        ));
+    }
+}
+
+#[test]
+fn rejects_duplicate_skill_groups() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+groups = ["design", "design"]
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::DuplicateListEntry {
+            field: "skill_sources[].groups",
+            value,
+            ..
+        }) if value == "design"
+    ));
+}
+
+#[test]
 fn rejects_explicit_empty_skill_groups() {
     let contents = r#"
 scope = "user"
