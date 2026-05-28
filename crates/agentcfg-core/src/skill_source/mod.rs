@@ -3,5 +3,12 @@
 //! Path and git acquisition, hashing, and lockfile integration are implemented in later milestones.
 
 mod path;
+mod selection;
 
-pub use path::{DiscoveredSkill, DiscoveryDepth, discover_path_skills};
+pub use path::{
+    DiscoveredSkill, DiscoveredSkillsInPathSource, DiscoveryDepth, discover_skills_in_source,
+};
+pub use selection::{
+    EmptyDiscovery, SelectedSkill, SkillSelection, SkillSelectionInput, SkillSelectionWarning,
+    resolve_skill_selection,
+};

@@ -339,11 +339,16 @@ cargo test -p agentcfg-core path_skill_source_discovery
 
 #### Task M2.2: Resolve Included Skills
 
+- [ ] Rename the path Skill Source discovery API to `discover_skills_in_source` returning `DiscoveredSkillsInPathSource`, with the resolved Skill Source root alongside discovered skills so Skill Selection does not duplicate path resolution.
 - [ ] Select all discovered skills when neither `include` nor `groups` is set.
+- [ ] Validate `include` entries as Source Skill Name references: reject empty values, leading/trailing whitespace, and duplicates.
 - [ ] Select only Included Skills when `include` is set.
 - [ ] Report missing Included Skills with Skill Source and Config Layer context.
 - [ ] Emit a structured warning (CLI renders later) when discovery returns zero skills but the resolved Skill Source directory exists; include `skill_source_id`, resolved path, and effective `discovery_depth`.
-- [ ] Keep Skill Selection output structured for later Skill Alias handling, materialization, and Desired State construction.
+- [ ] Keep Skill Selection output source-identity based and structured for later Skill Alias handling, materialization, and Desired State construction: include Config Layer, Skill Source id, Source Skill Name, and skill directory path.
+- [ ] Sort selected output deterministically by Config Layer, Skill Source id, and Source Skill Name; config list order is not semantic.
+- [ ] Do not detect duplicate selected Source Skill Names across Skill Sources or Config Layers in M2.2; Discovery Name Collision handling owns that after aliases, hashes, and Client Discovery Locations are known.
+- [ ] Do not introduce Discovery Name in M2.2 output; M2.4 owns Skill Alias resolution and Discovery Name production.
 - [ ] Add tests for all-skills, included-skills, missing-include, and empty-discovery warning cases.
 
 Validation:
@@ -355,6 +360,8 @@ cargo test -p agentcfg-core skill_selection
 #### Task M2.3: Resolve Skill Source-local Skill Groups
 
 - [ ] Parse optional `skills.toml` only at the resolved Skill Source root (not under organizational subdirectories).
+- [ ] Validate `groups` entries as Skill Group references: reject empty values, leading/trailing whitespace, and duplicates.
+- [ ] Add Skill Group expansion on top of M2.2 source-identity Skill Selection output; M2.2 does not resolve `groups`.
 - [ ] Resolve selected `groups` into Source Skill Names.
 - [ ] Report missing Skill Groups and Skill Group references to missing Source Skill Names.
 - [ ] Merge `include` and `groups` deterministically.
@@ -370,6 +377,7 @@ cargo test -p agentcfg-core skill_source_groups
 
 - [ ] Apply layer-local Skill Aliases after Skill Source-local Skill Group expansion.
 - [ ] Treat Discovery Name as the discoverable identity for Clients.
+- [ ] Transform M2.2 source-identity Skill Selection output into Discovery Name-bearing output.
 - [ ] Preserve Source Skill Names for lockfile and manifest records.
 - [ ] Keep output structured enough for later Discovery Name Collision detection at Client Discovery Locations.
 - [ ] Expose Skill Selection output with Discovery Names as a lower-level core API, not a CLI-rendered summary.
@@ -557,6 +565,7 @@ cargo test -p agentcfg-core desired_state
 
 - [ ] Re-evaluate whether `workflow/types.rs` should split (for example `workflow/types/init.rs` vs preview/apply request types) once preview and apply result fields are defined; avoid a single growing DTO module before adding M5 fields.
 - [ ] Detect Discovery Name Collisions per Client Discovery Location path after Client Discovery Registry resolution.
+- [ ] Apply Discovery Name Collision detection across the full Desired State, including same-layer and cross-layer selected entries.
 - [ ] Merge Discovery Requirements only when selected entries refer to the same locked Source Skill Name and installed hash.
 - [ ] Include Config Layer/Skill Source context in collision diagnostics.
 - [ ] Generate lockfile create/update entries.
