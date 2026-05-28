@@ -339,17 +339,17 @@ cargo test -p agentcfg-core path_skill_source_discovery
 
 #### Task M2.2: Resolve Included Skills
 
-- [ ] Rename the path Skill Source discovery API to `discover_skills_in_source` returning `DiscoveredSkillsInPathSource`, with the resolved Skill Source root alongside discovered skills so Skill Selection does not duplicate path resolution.
-- [ ] Select all discovered skills when neither `include` nor `groups` is set.
-- [ ] Validate `include` entries as Source Skill Name references: reject empty values, leading/trailing whitespace, and duplicates.
-- [ ] Select only Included Skills when `include` is set.
-- [ ] Report missing Included Skills with Skill Source and Config Layer context.
-- [ ] Emit a structured warning (CLI renders later) when discovery returns zero skills but the resolved Skill Source directory exists; include `skill_source_id`, resolved path, and effective `discovery_depth`.
-- [ ] Keep Skill Selection output source-identity based and structured for later Skill Alias handling, materialization, and Desired State construction: include Config Layer, Skill Source id, Source Skill Name, and skill directory path.
-- [ ] Sort selected output deterministically by Config Layer, Skill Source id, and Source Skill Name; config list order is not semantic.
-- [ ] Do not detect duplicate selected Source Skill Names across Skill Sources or Config Layers in M2.2; Discovery Name Collision handling owns that after aliases, hashes, and Client Discovery Locations are known.
-- [ ] Do not introduce Discovery Name in M2.2 output; M2.4 owns Skill Alias resolution and Discovery Name production.
-- [ ] Add tests for all-skills, included-skills, missing-include, and empty-discovery warning cases.
+- [x] Rename the path Skill Source discovery API to `discover_skills_in_source` returning `DiscoveredSkillsInPathSource`, with the resolved Skill Source root alongside discovered skills so Skill Selection does not duplicate path resolution.
+- [x] Select all discovered skills when neither `include` nor `groups` is set.
+- [x] Validate `include` entries as Source Skill Name references: reject empty values, leading/trailing whitespace, and duplicates.
+- [x] Select only Included Skills when `include` is set.
+- [x] Report missing Included Skills with Skill Source and Config Layer context.
+- [x] Emit a structured warning (CLI renders later) when discovery returns zero skills but the resolved Skill Source directory exists; include `skill_source_id`, resolved path, and effective `discovery_depth`.
+- [x] Keep Skill Selection output source-identity based and structured for later Skill Alias handling, materialization, and Desired State construction: include Config Layer, Skill Source id, Source Skill Name, and skill directory path.
+- [x] Sort selected output deterministically by Config Layer, Skill Source id, and Source Skill Name; config list order is not semantic.
+- [x] Do not detect duplicate selected Source Skill Names across Skill Sources or Config Layers in M2.2; Discovery Name Collision handling owns that after aliases, hashes, and Client Discovery Locations are known.
+- [x] Do not introduce Discovery Name in M2.2 output; M2.4 owns Skill Alias resolution and Discovery Name production.
+- [x] Add tests for all-skills, included-skills, missing-include, and empty-discovery warning cases.
 
 Validation:
 
