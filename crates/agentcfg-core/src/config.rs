@@ -224,8 +224,7 @@ fn validate_skill_source(
 
     let discovery_depth = validate_discovery_depth(path, layer, raw.discovery_depth)?;
 
-    let included_skill_names =
-        validate_optional_list(path, layer, "skill_sources[].include", raw.include)?;
+    let included_skill_names = validate_included_skill_names(path, layer, raw.include)?;
     let skill_group_names =
         validate_optional_list(path, layer, "skill_sources[].groups", raw.groups)?;
 
@@ -258,6 +257,39 @@ fn default_discovery_depth() -> u8 {
     DiscoveryDepth::DEFAULT.as_u8()
 }
 
+fn validate_included_skill_names(
+    path: &Path,
+    layer: ConfigLayer,
+    include: Option<Vec<String>>,
+) -> Result<Vec<String>> {
+    const FIELD: &str = "skill_sources[].include";
+    match include {
+        None => Ok(Vec::new()),
+        Some(values) if values.is_empty() => Err(empty_field(path, layer, FIELD)),
+        Some(values) => {
+            let mut seen = BTreeSet::new();
+            for value in &values {
+                if value.is_empty() {
+                    return Err(invalid_field_value(path, layer, FIELD, value.clone()));
+                }
+                if value != value.trim() {
+                    return Err(invalid_field_value(path, layer, FIELD, value.clone()));
+                }
+                if !seen.insert(value.clone()) {
+                    return Err(ConfigError::DuplicateListEntry {
+                        path: path.to_path_buf(),
+                        layer,
+                        field: FIELD,
+                        value: value.clone(),
+                    }
+                    .into());
+                }
+            }
+            Ok(values)
+        }
+    }
+}
+
 fn validate_optional_list(
     path: &Path,
     layer: ConfigLayer,
@@ -269,6 +301,21 @@ fn validate_optional_list(
         Some(values) => Ok(values),
         None => Ok(Vec::new()),
     }
+}
+
+fn invalid_field_value(
+    path: &Path,
+    layer: ConfigLayer,
+    field: &'static str,
+    value: String,
+) -> Error {
+    ConfigError::InvalidFieldValue {
+        path: path.to_path_buf(),
+        layer,
+        field,
+        value,
+    }
+    .into()
 }
 
 fn validate_skill_aliases(

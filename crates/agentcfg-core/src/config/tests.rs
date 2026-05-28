@@ -223,6 +223,91 @@ clients = ["codex"]
 }
 
 #[test]
+fn skill_selection_rejects_empty_included_skill_name() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+include = [""]
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::InvalidFieldValue {
+            field: "skill_sources[].include",
+            value,
+            ..
+        }) if value.is_empty()
+    ));
+}
+
+#[test]
+fn skill_selection_rejects_included_skill_name_with_leading_or_trailing_whitespace() {
+    for value in [" foo", "foo ", " foo "] {
+        let contents = format!(
+            r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+include = ["{value}"]
+
+[skills]
+clients = ["codex"]
+"#
+        );
+
+        let error = parse_config_str(ConfigLayer::User, "user.toml", &contents).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::Config(ConfigError::InvalidFieldValue {
+                field: "skill_sources[].include",
+                value: actual,
+                ..
+            }) if actual == value
+        ));
+    }
+}
+
+#[test]
+fn skill_selection_rejects_duplicate_included_skill_names() {
+    let contents = r#"
+scope = "user"
+
+[[skill_sources]]
+id = "personal"
+type = "path"
+path = "../skills"
+include = ["foo", "foo"]
+
+[skills]
+clients = ["codex"]
+"#;
+
+    let error = parse_config_str(ConfigLayer::User, "user.toml", contents).unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::Config(ConfigError::DuplicateListEntry {
+            field: "skill_sources[].include",
+            value,
+            ..
+        }) if value == "foo"
+    ));
+}
+
+#[test]
 fn rejects_explicit_empty_included_skills() {
     let contents = r#"
 scope = "user"

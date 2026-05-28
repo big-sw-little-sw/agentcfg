@@ -14,6 +14,9 @@ pub enum Error {
     SkillSource(#[from] SkillSourceError),
 
     #[error(transparent)]
+    SkillSelection(#[from] SkillSelectionError),
+
+    #[error(transparent)]
     PathEnvironment(#[from] PathEnvironmentError),
 
     #[error(transparent)]
@@ -119,6 +122,14 @@ pub enum ConfigError {
         field: &'static str,
         value: String,
     },
+
+    #[error("duplicate value `{value}` for `{field}` at {path} for {layer:?}")]
+    DuplicateListEntry {
+        path: PathBuf,
+        layer: ConfigLayer,
+        field: &'static str,
+        value: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -158,6 +169,24 @@ pub enum SkillSourceError {
         skill_source_id: String,
         skill_dir: PathBuf,
     },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SkillSelectionError {
+    #[error("Included Skill not found in Skill Source")]
+    MissingIncludedSkills {
+        missing: Vec<MissingIncludedSkill>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MissingIncludedSkill {
+    pub layer: ConfigLayer,
+    pub skill_source_id: String,
+    pub source_skill_name: String,
+    pub resolved_root: PathBuf,
+    pub discovery_depth: crate::skill_source::DiscoveryDepth,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -41,6 +41,14 @@ impl DiscoveryDepth {
     }
 }
 
+/// Path discovery result: resolved configured root plus discovered skill inventory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DiscoveredSkillsInPathSource {
+    /// Resolved configured Skill Source path (not `canonicalize` output).
+    pub resolved_root: PathBuf,
+    pub discovered_skills: Vec<DiscoveredSkill>,
+}
+
 /// A **Skill** directory discovered under a path **Skill Source** root.
 ///
 /// `skill_dir` and `source_skill_name` use walk-time path spelling (`read_dir` /
@@ -73,12 +81,12 @@ fn resolve_skill_source_root(config_file: &Path, configured_path: &Path) -> Path
 /// the directory walk, not from `canonicalize`.
 ///
 /// Symlink directory entries below the Skill Source root are skipped in M2.1.
-pub fn discover_path_skills(
+pub fn discover_skills_in_source(
     skill_source_id: &str,
     config_file: &Path,
     configured_path: &Path,
     discovery_depth: DiscoveryDepth,
-) -> Result<Vec<DiscoveredSkill>> {
+) -> Result<DiscoveredSkillsInPathSource> {
     let resolved_root = resolve_skill_source_root(config_file, configured_path);
     validate_skill_source_root(skill_source_id, configured_path, &resolved_root)?;
 
@@ -87,7 +95,7 @@ pub fn discover_path_skills(
         source,
     })?;
 
-    let mut discovered = Vec::new();
+    let mut discovered_skills = Vec::new();
     // Walk keys only — canonical paths may fold case on case-insensitive volumes
     // (macOS APFS). Never store these in `DiscoveredSkill` or error path fields.
     scan_directory(
@@ -96,13 +104,16 @@ pub fn discover_path_skills(
         &resolved_root,
         0,
         discovery_depth,
-        &mut discovered,
+        &mut discovered_skills,
     )?;
 
-    check_duplicate_source_skill_names(skill_source_id, &discovered)?;
+    check_duplicate_source_skill_names(skill_source_id, &discovered_skills)?;
 
-    discovered.sort_by(|left, right| left.source_skill_name.cmp(&right.source_skill_name));
-    Ok(discovered)
+    discovered_skills.sort_by(|left, right| left.source_skill_name.cmp(&right.source_skill_name));
+    Ok(DiscoveredSkillsInPathSource {
+        resolved_root,
+        discovered_skills,
+    })
 }
 
 fn validate_skill_source_root(
@@ -331,13 +342,17 @@ mod tests {
         skill_source_id: &str,
         configured_path: &Path,
         discovery_depth: u8,
-    ) -> Result<Vec<DiscoveredSkill>> {
-        discover_path_skills(
+    ) -> Result<DiscoveredSkillsInPathSource> {
+        discover_skills_in_source(
             skill_source_id,
             Path::new("/tmp/agentcfg.toml"),
             configured_path,
             DiscoveryDepth::try_from_u8(discovery_depth).unwrap(),
         )
+    }
+
+    fn discovered_skills(result: DiscoveredSkillsInPathSource) -> Vec<DiscoveredSkill> {
+        result.discovered_skills
     }
 
     #[test]
@@ -353,7 +368,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root.join("foo"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "foo");
@@ -365,7 +380,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root);
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(
@@ -381,7 +396,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         write_skill(&root.join("from-dot-root"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "from-dot-root");
@@ -394,7 +409,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         write_skill(&root.join("agent-skill"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "agent-skill");
@@ -409,7 +424,7 @@ mod tests {
 
         let config_file = config_dir.join("agentcfg.toml");
         let configured = Path::new(".");
-        let skills = discover_path_skills(
+        let result = discover_skills_in_source(
             "personal",
             &config_file,
             configured,
@@ -417,9 +432,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].source_skill_name, "project");
-        assert_eq!(skills[0].skill_dir, config_dir);
+        assert_eq!(result.resolved_root, config_dir);
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].source_skill_name, "project");
+        assert_eq!(result.discovered_skills[0].skill_dir, config_dir);
     }
 
     #[test]
@@ -428,7 +444,7 @@ mod tests {
         let skill_dir = root.join("DesignTeam").join("my-skill");
         write_skill(&skill_dir);
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "my-skill");
@@ -444,7 +460,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root.join("design").join("foo"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "foo");
@@ -465,7 +481,7 @@ mod tests {
                 .join("deep"),
         );
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -475,7 +491,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root.join("a").join("b").join("c").join("within"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "within");
@@ -487,7 +503,7 @@ mod tests {
         write_skill(&root.join("foo"));
         write_skill(&root.join("foo").join("bar"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "foo");
@@ -518,7 +534,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root.join(".hidden").join("secret"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -527,7 +543,7 @@ mod tests {
     fn path_skill_source_discovery_empty_source_directory() {
         let (_tempdir, root) = temp_skill_source();
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -540,7 +556,7 @@ mod tests {
         let missing = config_dir.join("../missing");
         let configured = PathBuf::from("../missing");
         let config_file = config_dir.join("agentcfg.toml");
-        let error = discover_path_skills(
+        let error = discover_skills_in_source(
             "personal",
             &config_file,
             &configured,
@@ -591,7 +607,7 @@ mod tests {
 
         let config_file = config_dir.join("agentcfg.toml");
         let configured = Path::new("../skills");
-        let skills = discover_path_skills(
+        let result = discover_skills_in_source(
             "personal",
             &config_file,
             configured,
@@ -599,8 +615,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].source_skill_name, "rel-skill");
+        let expected_resolved = config_dir.join("../skills");
+        assert_eq!(result.resolved_root, expected_resolved);
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].source_skill_name, "rel-skill");
     }
 
     #[test]
@@ -608,7 +626,7 @@ mod tests {
         let (_tempdir, root) = temp_skill_source();
         write_skill(&root.join("abs-skill"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "abs-skill");
@@ -684,7 +702,7 @@ mod tests {
         symlink(&dir_b, dir_a.join("to_b")).unwrap();
         symlink(&dir_a, dir_b.join("to_a")).unwrap();
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -701,7 +719,7 @@ mod tests {
         write_skill(&outside.path().join("outside-skill"));
         symlink(outside.path(), root.join("escape")).unwrap();
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -716,7 +734,7 @@ mod tests {
         write_skill(&real);
         symlink(&real, root.join("alias")).unwrap();
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].source_skill_name, "real");
@@ -735,11 +753,12 @@ mod tests {
         write_skill(&shared.join("deep-only"));
         symlink(&shared, root.join("shallow-link")).unwrap();
 
-        let skills = discover("personal", &root.join("shallow-link"), 2).unwrap();
+        let skills =
+            discovered_skills(discover("personal", &root.join("shallow-link"), 2).unwrap());
 
         assert_eq!(skills.len(), 1);
 
-        let skills = discover("personal", &root, 2).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 2).unwrap());
 
         assert!(skills.is_empty());
     }
@@ -750,7 +769,7 @@ mod tests {
         write_skill(&root.join("zebra"));
         write_skill(&root.join("alpha"));
 
-        let skills = discover("personal", &root, 4).unwrap();
+        let skills = discovered_skills(discover("personal", &root, 4).unwrap());
 
         assert_eq!(
             skills
