@@ -1,0 +1,8 @@
+/target
+/.agent-config/
+/.pi/
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**
+/.claude/
+/.my-agent-config/
