@@ -16,8 +16,6 @@ The repository currently has a minimal Rust Cargo workspace for `agentcfg-core` 
 
 The V1 Cargo workspace boundary described in `docs/design-v1.md` remains the active architectural target unless a newer approved plan changes it.
 
-Stable TOML field names (`scope`, `include`, `groups`, `skill_aliases`) are intentional; do not rename them to match glossary prose.
-
 ## Validation
 
 Run full repo validation with:
@@ -40,6 +38,7 @@ The `prek` command disables only the branch-protection hook so agents can valida
 ## Conventions
 
 - Match ubiquitous language in CLI help, errors, and diagnostics.
-- Keep changes scoped to the task; add tests with behavior in the same change when implementation code exists.
+- Keep changes limited to the task; add tests with behavior in the same change when implementation code exists.
 - Prefer focused core modules over growing workflow orchestration with low-level logic.
+- For new modules, add a short module-level comment describing its responsibility. Add comments on types/functions only when the name and shape cannot convey intent, invariants, constraints, or trade-offs clearly.
 - Scope and allowed behavior come from the task plus `CONTEXT.md`, `docs/prd.md`, and `docs/design-v1.md` — not from this file.

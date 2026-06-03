@@ -36,6 +36,8 @@ Establish the Rust workspace shape, shared result/error conventions, command req
 
 Importance: contracts are load-bearing. Vague shapes will leak CLI wording, filesystem details, or persistence schema into modules that should exchange normalized state. This milestone is complete when data passed between modules has stable names, the CLI/core boundary is thin, and the codebase compiles and tests without real install behavior.
 
+Task plans: [M1 Stable Contracts And Workspace Boundary](m1-stable-contracts-and-workspace-boundary/README.md).
+
 ### M2: Focused Leaf Modules
 
 Implement the low-level modules that return facts or perform narrow persistence operations without command policy: client discovery registry, filesystem probing, deterministic content digesting, config and lock stores, Manifest store, Managed Skill Content store, and discovery symlink operations.
