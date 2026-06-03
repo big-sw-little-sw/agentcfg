@@ -14,4 +14,3 @@ workspace = true
 
 [dependencies]
 agentcfg-core = { path = "../agentcfg-core" }
-

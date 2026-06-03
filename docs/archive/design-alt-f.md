@@ -128,4 +128,3 @@ The deepest modules are `domain`, `desired_state`, `locking`, `install_contract`
 - Do not generalize every filesystem operation behind broad traits.
 - Do not add flags or modes for cleanup beyond preview/apply/prune separation.
 - Do not split tiny pass-through modules unless they protect invariants or reduce caller knowledge.
-

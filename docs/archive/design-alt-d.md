@@ -123,4 +123,3 @@ It does not remove stale state. Stale Installed Artifacts or Stale Discovery Req
 - Do not split every PRD noun into its own module.
 - Do not abstract source catalogs, org layers, MCP, commands, rules, or UI.
 - Do not add flags or modes beyond the PRD command surface.
-

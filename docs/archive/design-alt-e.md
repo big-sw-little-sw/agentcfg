@@ -144,4 +144,3 @@ With `--refresh-sources`, refreshed source resolutions are included only in desi
 - Do not expose internal resource IDs as user-visible contracts.
 - Do not add reusable workflow steps; commands should stay thin projections over reconciliation.
 - Do not add policy flags for cleanup beyond the PRD's `apply` versus `prune` split.
-
