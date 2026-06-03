@@ -57,7 +57,7 @@ Tier from the request is a guess; tier after context scan is the decision.
 
 1. **No arguments (default)**: Review all uncommitted changes
    - Run: `git diff` for unstaged changes
-   - Run: `git diff --cached` for staged changes  
+   - Run: `git diff --cached` for staged changes
    - Run: `git status --short` to identify untracked files
 
 2. **Commit hash** (e.g., `abc123`): Review that specific commit
@@ -284,7 +284,7 @@ If you can't verify something with tools or existing code:
 ```
 Severity: info
 Issue: Uncertain: Possible race condition in concurrent writes
-Detail: The code writes to shared state without locking. I couldn't find 
+Detail: The code writes to shared state without locking. I couldn't find
 other examples of concurrent access in the codebase to compare against.
 If this function can be called concurrently, this could cause data corruption.
 ```
@@ -418,27 +418,27 @@ Check if file exists before writing and increment as needed.
 
 Use these severity levels based on impact:
 
-**critical**: 
+**critical**:
 - Security vulnerabilities (injection, auth bypass, data exposure)
 - Data corruption risks
 - Production-breaking bugs that will cause immediate failures
 
-**high**: 
+**high**:
 - Logic errors that cause incorrect behavior
 - Broken error handling that masks failures
 - Significant performance issues (O(n²) on unbounded data)
 
-**medium**: 
+**medium**:
 - Code quality issues affecting maintainability
 - Minor bugs that occur in edge cases
 - Missing error handling for non-critical paths
 
-**low**: 
+**low**:
 - Egregious style violations (only if they violate documented standards)
 - Small optimizations
 - Minor inconsistencies
 
-**info**: 
+**info**:
 - Suggestions for improvement
 - Uncertain issues that need verification
 - Questions about potential problems
@@ -510,9 +510,9 @@ File: packages/server/src/hive/services/sync.py
 Line: 127
 Issue: Missing error handling for IntegrityError during version creation
 
-Detail: The create_version() call at line 127 can raise IntegrityError if a version 
-with this ID already exists (this happens when retrying a failed sync operation). 
-Without catching this exception, the entire operation fails without cleanup, 
+Detail: The create_version() call at line 127 can raise IntegrityError if a version
+with this ID already exists (this happens when retrying a failed sync operation).
+Without catching this exception, the entire operation fails without cleanup,
 potentially leaving stale locks that block subsequent syncs.
 
 Suggestion: Wrap in try/except and handle the duplicate version case:
@@ -533,16 +533,16 @@ File: packages/sdk/src/hive_sdk/operations.py
 Line: 89
 Issue: N+1 query pattern when fetching version metadata
 
-Detail: The code iterates over versions (line 89) and makes a separate API call 
-for each version's metadata (line 92). For datasets with >100 versions (typical 
-in production), this causes 100+ sequential HTTP requests, taking 10-30 seconds 
+Detail: The code iterates over versions (line 89) and makes a separate API call
+for each version's metadata (line 92). For datasets with >100 versions (typical
+in production), this causes 100+ sequential HTTP requests, taking 10-30 seconds
 instead of <1 second with batch fetching.
 
 Suggestion: Use the batch metadata endpoint:
   # Instead of:
   for v in versions:
       metadata = client.get_version_metadata(v.id)
-  
+
   # Use:
   version_ids = [v.id for v in versions]
   metadata_map = client.get_batch_metadata(version_ids)
@@ -555,15 +555,15 @@ File: packages/server/src/hive/executors/commit.py
 Line: 234
 Issue: Uncertain: Possible race condition in concurrent commit attempts
 
-Detail: The code checks if a commit marker exists (line 234), then writes a new one 
-(line 238) without any locking mechanism. I couldn't find other examples of concurrent 
+Detail: The code checks if a commit marker exists (line 234), then writes a new one
+(line 238) without any locking mechanism. I couldn't find other examples of concurrent
 commit handling to verify the pattern.
 
-If two commit operations for the same version run simultaneously, they could both 
-pass the existence check and create conflicting markers, violating the "single commit 
+If two commit operations for the same version run simultaneously, they could both
+pass the existence check and create conflicting markers, violating the "single commit
 sequence" invariant mentioned in AGENTS.md §3.4.
 
-Suggest verifying: Is this path protected by locks at a higher level? If not, should 
+Suggest verifying: Is this path protected by locks at a higher level? If not, should
 this use atomic file creation (O_EXCL) or database-level locking?
 ```
 
@@ -574,12 +574,12 @@ File: packages/server/src/hive/executors/sync_commit.py
 Line: 156
 Issue: Violates "facts before visibility" invariant
 
-Detail: AGENTS.md §3.4 states "Facts-before-visibility: only mark `completed` after 
-commit marker exists." This code marks the intent as completed (line 156) before 
+Detail: AGENTS.md §3.4 states "Facts-before-visibility: only mark `completed` after
+commit marker exists." This code marks the intent as completed (line 156) before
 writing the commit marker (line 162).
 
-If the process crashes between these lines, the database shows a completed operation 
-but NFS has no commit marker, breaking the durability guarantee. Clients would see 
+If the process crashes between these lines, the database shows a completed operation
+but NFS has no commit marker, breaking the durability guarantee. Clients would see
 a "successful" commit that can't be verified.
 
 Suggestion: Reverse the order - write marker first, then update DB:
@@ -608,7 +608,7 @@ Issue: Function is 55 lines, should be under 50
 Detail: AGENTS.md suggests functions under 50 lines as a guideline
 Suggestion: Split into smaller functions
 ```
-*Why bad: The 50-line guideline is a suggestion, not a hard rule. Only flag if 
+*Why bad: The 50-line guideline is a suggestion, not a hard rule. Only flag if
 the function is actually doing too many things or hard to understand.*
 
 ### Bad: Hypothetical Problem
@@ -620,7 +620,7 @@ Issue: Missing timeout could cause infinite hang
 Detail: This HTTP request has no timeout
 Suggestion: Add a timeout
 ```
-*Why bad: Doesn't check if httpx client already has default timeout configured. 
+*Why bad: Doesn't check if httpx client already has default timeout configured.
 Verify first before claiming it's missing.*
 
 ### Bad: Overstated Severity
@@ -632,7 +632,7 @@ Issue: Variable name is unclear
 Detail: The variable 'x' should have a more descriptive name
 Suggestion: Rename to 'dataset_count'
 ```
-*Why bad: Unclear variable names are at most "low" severity, not "critical". 
+*Why bad: Unclear variable names are at most "low" severity, not "critical".
 Critical is for security vulnerabilities and production-breaking bugs.*
 
 ---

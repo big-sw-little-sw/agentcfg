@@ -171,7 +171,7 @@ After all fixes complete and validation passes, provide summary:
 
 ### Fixes Applied
 
-**Review file processed**: 
+**Review file processed**:
 - `.agent-config/user/artifacts/code-reviews/[filename].md`
 
 **Scope applied** (if any):

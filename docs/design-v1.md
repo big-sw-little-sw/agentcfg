@@ -1,685 +1,914 @@
-# agentcfg V1 Design
+# V1 Design
 
-This document defines V1 persisted contracts and safety rules. Product behavior and user-facing workflows are summarized in [prd.md](prd.md).
+## Thesis
 
-## Files and State
+V1 uses a bounded reconciler architecture. The reconciler is a deep policy module that compares normalized locked desired state with normalized current state and returns command-specific plans or reports. It does not resolve Skill Sources, write files, or know lockfile persistence details.
 
-Project and CLI name:
+The design keeps generic infrastructure out of V1. V1 manages Skills. Future item kinds, such as Agents, can be added as typed resource groups above or beside Skills without turning the V1 reconciler into a generic resource graph.
+
+The design is lightly inspired by `kubectl apply`'s declarative comparison of desired configuration with live state, while keeping pruning as an explicit separate command. It is also inspired by Cargo's lockfile model: resolve first, persist the lock, then perform work against that persisted resolution. References: [Kubernetes declarative object management](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/) and [cargo generate-lockfile](https://doc.rust-lang.org/cargo/commands/cargo-generate-lockfile.html).
+
+Core split:
+
+| Module | Role |
+| --- | --- |
+| `desired_builder` | Compiles active config intent into `DesiredState`. |
+| `lock_planner` | Resolves `DesiredState` plus existing lockfiles into proposed or existing locked state. |
+| `current_inventory` | Normalizes filesystem, Manifest, Managed State, and discovery-location evidence into `CurrentState`. |
+| `reconciler` | Compares locked desired state with current state and returns command policy results. |
+| `executor` | Applies approved mutation plans to lockfiles, Managed State, discovery locations, and Manifest records. |
+| `reporter` | Renders structured command results as terminal output. |
+
+The diagram below shows the high-level data flow between those modules. It is a conceptual overview; command-specific details are covered in the command flow sections.
+
+```mermaid
+flowchart LR
+    Config["Config Layers"] --> Desired["desired_builder\nDesiredState"]
+    Desired --> Lock["lock_planner\nLockedDesiredState"]
+    Locks["Existing Lockfiles"] --> Lock
+    Manifest["Manifest + Managed State"] --> Inventory["current_inventory\nCurrentState"]
+    Discovery["Client Discovery Locations"] --> Inventory
+    Lock --> Reconciler["reconciler\npolicy plans/reports"]
+    Inventory --> Reconciler
+    Reconciler --> Executor["executor\nmutation + preflight"]
+    Lock --> Executor
+    Reconciler --> Reporter["reporter\nterminal output"]
+    Executor --> Reporter
+```
+
+## Module Layout
+
+Recommended Rust module layout:
 
 ```text
-agentcfg
+crates/agentcfg-cli/src/
+  main.rs                 CLI entrypoint
+  args.rs                 argument parsing into command requests
+  output.rs               terminal rendering adapters
+  exit_codes.rs           central exit-code mapping
+
+crates/agentcfg-core/src/
+  workflow/
+    init.rs               command use case
+    preview.rs            command use case and command-plan composition
+    apply.rs              command use case and command-plan composition
+    prune.rs              command use case and command-plan composition
+    status.rs             command use case and command-report composition
+    doctor.rs             readiness diagnostics
+
+  desired_builder.rs      config intent -> DesiredState
+  lock_planner.rs         DesiredState + locks -> locked/proposed locked state
+  current_inventory.rs    filesystem + Manifest evidence -> CurrentState
+  reconciler/
+    mod.rs                public command-shaped entrypoints
+    classifiers.rs        private shared classification logic
+    preview.rs            PreviewReport shaping
+    apply.rs              ApplyPlan shaping
+    prune.rs              PrunePlan shaping
+    status.rs             StatusReport shaping
+
+  executor/
+    mod.rs                public apply/prune execution interface
+    apply.rs              apply preflight and write ordering
+    prune.rs              prune preflight and removal ordering
+
+  state/
+    desired.rs            DesiredState and skill desired resources
+    locked.rs             LockedDesiredState and proposed locked resources
+    current.rs            CurrentState and normalized observations
+
+  manifest.rs             Manifest model
+  lockfile.rs             persisted lockfile model
+  config.rs               parsed config model
+  client_registry.rs      supported clients and discovery locations
+  content_digest.rs       deterministic tree digest
+  stores/
+    config_store.rs       config file reads/writes
+    lock_store.rs         lockfile reads/writes
+    manifest_store.rs     Manifest reads/writes
+    managed_content.rs    content-addressed Managed Skill Content writes
+    discovery_store.rs    discovery symlink operations
+  fs/
+    filesystem_probe.rs   path kind, symlink, writability, directory facts
 ```
 
-Shared Project Config:
+The layout is intentionally not one module per PRD noun. Modules exist where they hide policy, normalize evidence, preserve persistence ownership, or reduce caller burden.
+
+## CLI Layout
+
+V1 keeps the CLI thin. It parses flags into typed command requests, calls the matching `workflow` use case, renders the result, and maps it to an exit code. It does not perform orchestration, source resolution, reconciliation, or filesystem mutation directly.
+
+Command surface:
 
 ```text
-agentcfg.toml
-agentcfg.lock
+agentcfg init [--project | --user]
+
+agentcfg preview [--user] [--refresh-sources] [--client <client>...]
+agentcfg apply   [--user] [--refresh-sources] [--client <client>...]
+
+agentcfg prune   [--user] [--client <client>...]
+agentcfg status  [--user] [--client <client>...]
+
+agentcfg doctor
 ```
 
-User Project Config:
+Request types:
 
 ```text
-.agentcfg/config.toml
-.agentcfg/lock.toml
+InitRequest {
+  target_layer: UserProject | SharedProject | User,
+}
+
+PreviewRequest {
+  install_level: Project | User,
+  refresh_sources: bool,
+  clients: ClientSelector,
+}
+
+ApplyRequest {
+  install_level: Project | User,
+  refresh_sources: bool,
+  clients: ClientSelector,
+}
+
+PruneRequest {
+  install_level: Project | User,
+  clients: ClientSelector,
+}
+
+StatusRequest {
+  install_level: Project | User,
+  clients: ClientSelector,
+}
+
+DoctorRequest {}
 ```
 
-User Config:
+CLI flag rules:
+
+- Default `init` creates User Project Config.
+- `init --project` creates Shared Project Config.
+- `init --user` creates User Config.
+- Default `preview`, `apply`, `prune`, and `status` run at Project Level.
+- `--user` selects User Level for `preview`, `apply`, `prune`, and `status`.
+- `doctor` has no `--user` because it checks environment/config/tooling readiness rather than one install level.
+- `--refresh-sources` is accepted only by `preview` and `apply`.
+- `--client <client>` may repeat and only narrows configured clients. It does not add clients outside configured selection unless config uses `clients = "all"`.
+
+Workflow mapping:
 
 ```text
-${XDG_CONFIG_HOME:-~/.config}/agentcfg/config.toml
-${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml
+agentcfg init     -> workflow::init::run(InitRequest)
+agentcfg preview  -> workflow::preview::run(PreviewRequest)
+agentcfg apply    -> workflow::apply::run(ApplyRequest)
+agentcfg prune    -> workflow::prune::run(PruneRequest)
+agentcfg status   -> workflow::status::run(StatusRequest)
+agentcfg doctor   -> workflow::doctor::run(DoctorRequest)
 ```
 
-Project Managed State:
+Output responsibilities:
+
+- `workflow` returns structured command reports/results.
+- `agentcfg-cli` renders terminal output from those structures.
+- Exit code mapping stays centralized in `exit_codes.rs`.
+- CLI help and diagnostics use PRD terms: Config Layer, Install Level, Skill Source, Client Discovery Location, Managed State, Manifest, Discovery Requirement, Installed Artifact, and Discovery Name Collision.
+
+## State Shapes
+
+Use typed aggregate state, not optional future bags.
 
 ```text
-.agentcfg/manifest.json
-.agentcfg/sources/
+DesiredState {
+  skills: DesiredSkillResources,
+}
+
+CurrentState {
+  skills: CurrentSkillResources,
+}
 ```
 
-User Managed State:
+If V2 adds Agents, extend the aggregate:
 
 ```text
-${XDG_STATE_HOME:-~/.local/state}/agentcfg/manifest.json
-${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/
+DesiredState {
+  skills: DesiredSkillResources,
+  agents: DesiredAgentResources,
+}
 ```
 
-`.agentcfg/` should be ignored by default. `agentcfg.lock` is committed only when a project intentionally adopts Shared Project Config.
+The reconciler may remain the command-level coordinator, but lifecycle policy should stay item-specific internally until multiple item kinds prove a shared abstraction.
 
-## Config Layers and Install Levels
+## Data Structure Concept Islands
 
-V1 exposes three Config Layers:
+These diagrams split the main data structures by ownership. They are about data relationships, not exact function call order.
 
-| Config Layer | Persisted Scope Value | Core name | Meaning |
-| --- | --- | --- | --- |
-| User Config | `user` | `ConfigLayer::User` | Current User's Config Layer across Projects. |
-| Shared Project Config | `shared-project` | `ConfigLayer::SharedProject` | Shared Project Config for one Project. |
-| User Project Config | `user-project` | `ConfigLayer::UserProject` | Current User's Config Layer for one Project. |
+### Intent And Locking
 
-Active Config Layers by command:
+```mermaid
+flowchart LR
+    Config["Config Layers"] -- "compiled by" --> DesiredBuilder["desired_builder"]
+    DesiredBuilder -- "produces" --> Desired["DesiredState\nactive config intent"]
+    Desired -- "resolved by" --> LockPlanner["lock_planner"]
+    ExistingLocks["ExistingLocks\npersisted lockfiles"] -- "read by" --> LockPlanner
+    LockPlanner -- "preview/apply result" --> LockPlan["LockPlan"]
+    LockPlanner -- "status/prune result" --> ExistingLockState["ExistingLockState"]
+    LockPlan -- "contains" --> Proposed["ProposedLockedDesiredState"]
+    LockPlan -- "contains" --> LockChanges["LockfileChanges"]
+    ExistingLockState -- "contains" --> Locked["LockedDesiredState"]
+```
 
-| Command | Active Config Layers | Install Level |
-| --- | --- | --- |
-| `agentcfg preview` | Shared Project Config, then User Project Config | Project Level |
-| `agentcfg preview --refresh-sources` | Shared Project Config, then User Project Config | Project Level |
-| `agentcfg apply` | Shared Project Config, then User Project Config | Project Level |
-| `agentcfg apply --refresh-sources` | Shared Project Config, then User Project Config | Project Level |
-| `agentcfg prune` | manifest Discovery Requirements for project Client Discovery Locations | Project Level |
-| `agentcfg status` | Shared Project Config, User Project Config, project manifest | Project Level |
-| `agentcfg doctor` | all discoverable config and environment state | diagnostic only |
-| `agentcfg preview --user` | User Config only | User Level |
-| `agentcfg preview --user --refresh-sources` | User Config only | User Level |
-| `agentcfg apply --user` | User Config only | User Level |
-| `agentcfg apply --user --refresh-sources` | User Config only | User Level |
-| `agentcfg prune --user` | stale Discovery Requirements and Installed Artifacts in user Client Discovery Locations | User Level |
-| `agentcfg status --user` | User Config and user manifest | User Level |
+### Current-State Inventory
 
-Layer order:
+```mermaid
+flowchart LR
+    Manifest["ManifestSnapshot"] -- "observed by" --> Inventory["current_inventory"]
+    Managed["ManagedContentSnapshot"] -- "observed by" --> Inventory
+    Discovery["DiscoverySnapshot"] -- "observed by" --> Inventory
+    Inventory -- "normalizes evidence into" --> Current["CurrentState"]
+```
+
+### Reconciliation Inputs And Outputs
+
+```mermaid
+flowchart LR
+    Proposed["ProposedLockedDesiredState"] -- "planned intent" --> PreviewInput["PreviewInput"]
+    Proposed -- "planned intent" --> ApplyInput["ApplyInput"]
+    Locked["LockedDesiredState"] -- "existing intent" --> PruneInput["PruneInput"]
+    Locked -- "existing intent" --> StatusInput["StatusInput"]
+    Current["CurrentState"] -- "observed state" --> PreviewInput
+    Current -- "observed state" --> ApplyInput
+    Current -- "observed state" --> PruneInput
+    Current -- "observed state" --> StatusInput
+
+    PreviewInput -- "classified by reconciler" --> PreviewReport["PreviewReport"]
+    ApplyInput -- "classified by reconciler" --> ApplyPlan["ApplyPlan"]
+    PruneInput -- "classified by reconciler" --> PrunePlan["PrunePlan"]
+    StatusInput -- "classified by reconciler" --> StatusReport["StatusReport"]
+```
+
+### Execution And Manifest State
+
+```mermaid
+flowchart LR
+    LockChanges["LockfileChanges"] -- "written before install" --> Executor["executor"]
+    ApplyPlan["ApplyPlan"] -- "executed by" --> Executor
+    PrunePlan["PrunePlan"] -- "executed by" --> Executor
+    Executor -- "records physical artifact" --> Installed["InstalledArtifact"]
+    Executor -- "records ownership need" --> Requirement["DiscoveryRequirement"]
+    Installed -- "points at" --> Content["Managed Skill Content\nTreeDigest"]
+    Requirement -- "requires" --> Installed
+```
+
+## Desired And Locked State
+
+`DesiredState` is active config intent before Skill Source resolutions are fixed.
+
+`LockedDesiredState` is normalized desired install state derived from existing lockfiles. It is used by `status` and `prune`.
+
+`ProposedLockedDesiredState` is the in-memory locked outcome produced by `preview` and `apply` after source/lock planning. It may include missing lockfile creation or refreshed source resolutions. `preview` never persists it. `apply` recomputes it at apply time and persists lockfile changes before installing.
+
+The reconciler receives normalized locked install state, not lockfile schema.
 
 ```text
-Shared Project Config -> User Project Config
+LockedDesiredState {
+  skills: LockedDesiredSkillResources,
+}
 ```
 
-User Project Config is additive by default. It may add Skill Sources, Skill Selection, Skill Aliases, and Clients for the current User in the current Project. It must not silently replace or weaken Shared Project Config. Explicit replacement or precedence semantics are out of V1.
+The normalized skill resources include desired Managed Skill Content, desired Installed Artifacts, and desired Discovery Requirements.
 
-Skill Source ids are namespaced by Config Layer internally:
+## Command Composition Types
+
+Command use cases compose lock planning, reconciliation, execution, and reporting through command-level types. These types keep lockfile/source diagnostics outside the reconciler while still giving reporters one coherent command result.
 
 ```text
-{persisted_scope_value}:{skill_source_id}
+LockPlan {
+  proposed_locked: ProposedLockedDesiredState,
+  lockfile_changes: Vec<LockfileChange>,
+  diagnostics: Vec<LockDiagnostic>,
+  fatal_diagnostics: Vec<FatalDesiredStateDiagnostic>,
+}
+
+ExistingLockState {
+  locked: LockedDesiredState,
+  diagnostics: Vec<LockDiagnostic>,
+  fatal_diagnostics: Vec<FatalDesiredStateDiagnostic>,
+}
+
+PreviewCommandPlan {
+  lock_plan: LockPlan,
+  install_preview: PreviewReport,
+}
+
+ApplyCommandPlan {
+  lockfile_changes: Vec<LockfileChange>,
+  apply_plan: ApplyPlan,
+}
+
+PruneCommandPlan {
+  existing_lock_state: ExistingLockState,
+  prune_plan: PrunePlan,
+}
+
+StatusCommandReport {
+  existing_lock_state: ExistingLockState,
+  install_status: StatusReport,
+}
 ```
 
-This allows Shared Project Config and User Project Config to both use a Skill Source id such as `local` without collision. User-facing diagnostics should include both the human Skill Source id and the Config Layer when ambiguity matters.
+`LockDiagnostic` includes non-fatal source-resolution and config/lock mismatch diagnostics. Fatal desired-state diagnostics stop before inventory/reconciliation.
 
-Discovery Names are not namespaced. After Skill Alias resolution, Discovery Names must be unique per Client Discovery Location. If two Active Config Layers resolve to the same Discovery Name at the same Client Discovery Location:
+## Module Responsibilities
 
-- If they refer to the same locked Source Skill Name and same installed hash, merge Discovery Requirements.
-- If they differ, fail with a **Discovery Name Collision** error and require a Skill Alias.
+### `desired_builder`
 
-Skill Aliases are applied before Discovery Name Collision detection.
-
-Client selection is additive across Active Config Layers. If Shared Project Config selects `codex` and User Project Config selects `opencode`, the desired project install includes both Clients. If CLI `--client` is omitted, commands at a given Install Level use the full configured Client set for the Active Config Layers. CLI `--client` may be repeated to narrow that configured Client set, but must not add Clients outside the configured selection in V1.
-
-Discovery Requirements are keyed by Config Layer, Client, and Install Level (serialized forms may use Persisted Scope Value for the layer). Removing a skill or client from one layer makes that Discovery Requirement stale. `prune` removes stale Discovery Requirements and deletes the Installed Artifact only when no Discovery Requirements remain.
-
-In code, use `ConfigLayer` for the config file/layer being initialized or loaded, `InstallLevel` for project-vs-user installation, and reserve low-level `target_path` / symlink **target** only for filesystem symlink diagnostics and internal manifest fields—not user-facing "client target" language.
-
-Use `SkillSourceResolutionPolicy::{UseLocked, RefreshSources}` for the core Skill Source resolution choice so the workflow API expresses **Source Refresh** without leaking the CLI flag name `--refresh-sources`.
-
-## Config Schema
-
-V1 config is skill-specific. Do not expose or implement a generic Configured Item schema in V1.
-
-Example:
-
-```toml
-scope = "user-project"
-
-[[skill_sources]]
-id = "personal"
-type = "path"
-path = "../my-agent-skills/skills"
-discovery_depth = 4
-include = ["do-code-review"]
-groups = ["design"]
-
-[skill_aliases]
-"personal:legacy-review" = "code-review"
-
-[skills]
-clients = ["codex", "claude", "opencode"]
-```
-
-To select every Client supported by the current `agentcfg` version:
-
-```toml
-[skills]
-clients = "all"
-```
-
-Rules:
-
-- `scope` is the Persisted Scope Value field; it is required and must match the config location.
-- `[[skill_sources]]` entries require explicit `id`.
-- **Skill Selection** lives only under `[[skill_sources]]`.
-- `include` is an optional list of **Included Skills** (Source Skill Names) from that Skill Source.
-- `groups` is an optional list of **Skill Group** names from that Skill Source's `skills.toml`.
-- `include` and `groups` are unioned when both are present. If they select the same Source Skill Name more than once, the Skill is selected once.
-- Successful Skill Selection output preserves source identity only: Config Layer, Skill Source id, Source Skill Name, and skill directory path. It does not preserve whether a Skill was selected through `include`, `groups`, or both.
-- If neither `include` nor `groups` is set, select all discovered skills from that Skill Source.
-- `exclude` is out of V1.
-- Missing `[skills].clients` is a validation error.
-- `[skills].clients` may be either an explicit non-empty list of client ids or the string `"all"`.
-- `clients = "all"` means every `agentcfg`-supported Client Discovery Location that is enabled for the selected Install Level in the current `agentcfg` version. It does not mean every agent application installed on the machine. Because this can expand when `agentcfg` adds support for new clients, `preview` must show the resolved client set before `apply` writes any new Client Discovery Location.
-- `[skills]` owns install-wide skill behavior such as selected Clients. It does not select skill names in V1.
-- CLI `--client` may narrow configured clients, but should not expand beyond configured clients in V1. If omitted, all configured clients remain selected. With `clients = "all"`, `--client` may narrow to any supported client.
-- **Skill Aliases** live under `[skill_aliases]`, are local to the config layer that declares them, and use qualified `skill_source_id:source_skill_name` keys (Source Skill Name).
-- Skill Aliases are applied after Skill Source-local Skill Group expansion and before Discovery Name Collision detection.
-
-Potential future config sections:
-
-```toml
-[[mcp_servers]]
-[[hooks]]
-[[rules]]
-```
-
-Future Configured Item sections may share preview/apply operation concepts, but V1 should remain skill-first until a second Configured Item kind exists.
-
-## Skill Source Discovery
-
-Supported V1 Skill Source types:
-
-- `path`: a filesystem directory containing skills
-- `git`
-
-Default behavior:
-
-- Git Skill Sources are copied into the active Install Level's Managed Skill Content directory.
-- Path Skill Sources are also copied by default.
-- Direct Skill Source symlink mode is deferred from V1. This would mean pointing a Client Discovery Location directly at the original Skill Source directory instead of Managed Skill Content.
-
-Path resolution:
-
-- `[[skill_sources]].path` may be absolute or relative.
-- Relative paths resolve against the declaring config file's parent directory at discovery time.
-- Discovery runs from the resolved Skill Source directory (the directory tree root), not from process cwd.
-
-Discovery depth and traversal:
-
-- `[[skill_sources]].discovery_depth` is optional; default `4`, maximum `8`.
-- A **Skill** is a directory that directly contains `SKILL.md` (Agent Skill Format).
-- **Source Skill Name** is the skill directory's leaf name. Organizational subdirectories below the Skill Source root do not qualify the name.
-- Discovery walks the Skill Source tree up to `discovery_depth` path segments below the Skill Source root (the segment count to the skill directory containing `SKILL.md`).
-- Skip directory entries whose name starts with `.`.
-- Skip symlink directory entries below the Skill Source root in M2.1. The configured Skill Source root itself may be a symlink; symlink traversal inside sources is deferred until materialization rules in M3.
-- Nested-skill exclusion: when a directory contains `SKILL.md`, it is a **Skill**; do not scan its children for additional skills.
-- Duplicate **Source Skill Name** values at different paths within the same Skill Source are an error.
-- Missing Skill Source paths and non-directory Skill Source paths are distinct structured errors so CLI and doctor output can give different remediation.
-- An existing Skill Source directory with zero discovered skills is valid at discovery time; workflows may warn when selecting skills (see implementation plan M2.2).
-
-Skill Source metadata:
-
-- `skills.toml` at the Skill Source root is optional; do not read `skills.toml` from organizational subdirectories.
-- `skills.toml` is read and validated only when a Skill Source selects one or more Skill Groups.
-- Skills in **Agent Skill Format** can be inferred from directories containing `SKILL.md`.
-- `skills.toml` may define Skill Source-local Skill Groups.
-- `skills.toml` is selection metadata for the Skill Source. It is not part of any individual Skill and is not copied into per-Skill Managed Skill Content unless a later design explicitly adds source metadata provenance.
-- A selected Skill Group that is not defined is reported as a missing Skill Group. Diagnostics should distinguish whether the root `skills.toml` is absent or present but does not define the group.
-- Skill Group names and Source Skill Name members are case-sensitive exact matches.
-
-V1 `skills.toml` schema:
-
-```toml
-[groups]
-design = [
-  "do-design-pass",
-  "do-design-review",
-  "do-maintainability-check",
-]
-```
-
-Skill Groups are namespaced by Skill Source. Two Skill Sources may both define `design`.
-
-When `skills.toml` is read, V1 treats it as a strict Skill Source metadata contract:
-
-- Only the top-level `[groups]` table is supported.
-- Unknown top-level keys are rejected.
-- An empty `skills.toml`, or a `skills.toml` without `[groups]`, is valid metadata that defines zero Skill Groups. Selected groups are then reported as missing from present metadata.
-- Group names must be non-empty and must not contain leading or trailing whitespace.
-- Group member lists must be non-empty.
-- Group members are Source Skill Name references. They must be non-empty, must not contain leading or trailing whitespace, and must not repeat within one group.
-- Group members are required to match discovered Source Skill Names only for selected Skill Groups. Unselected Skill Groups may contain Source Skill Name references that are not currently discovered.
-- Duplicate group names are invalid. If the TOML parser reports duplicate keys, surface the parse failure as Skill Source metadata failure.
-- Nested groups, inherited groups, and config-local group definitions are out of V1.
-
-## Artifact Model
-
-V1 separates Skill Source resolution and Managed Skill Content materialization from Installed Artifact placement at Client Discovery Locations.
-
-Skill Source acquisition mode:
-
-- `copy`: default for path and git Skill Sources. Each Skill in the Skill Selection is materialized into the active Install Level's Managed Skill Content directory.
-
-Managed Skill Content paths:
+Builds active config intent.
 
 ```text
-Project Level apply: .agentcfg/sources/<layer>/<skill-source-id>/<skill-source-hash>/<discovery-name>/
-User Level apply:    ${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/<layer>/<skill-source-id>/<skill-source-hash>/<discovery-name>/
+desired_builder.build(config_layers, install_level, client_filter) -> DesiredState
 ```
 
-The exact path format can change during implementation, but it must be stable enough for manifests and diagnostics. Managed Skill Content is the canonical materialized content for copied Skill Sources.
+Owns:
 
-Why Managed Skill Content is required:
+- active Config Layer selection
+- Project Level vs User Level separation
+- `--client` narrowing
+- `clients = "all"` expansion
+- configured Skill Sources, selections, groups, and aliases
+- config-level collision checks knowable without resolving sources
 
-- Plain `apply` can reinstall the locked skill version without rereading a mutable path Skill Source or floating git ref.
-- `apply --refresh-sources` (Source Refresh) materializes new Managed Skill Content, updates the lockfile, and updates Client Discovery Location symlinks to point at new Managed Skill Content.
-- Old Managed Skill Content can remain in Managed State until no lockfile or manifest-owned Installed Artifact uses it, then `prune` may remove it.
+Does not inspect git/path source contents, read discovery locations, or decide install state.
 
-Installed Artifact mode:
+### `lock_planner`
 
-- V1 default is `symlink` from the Client Discovery Location path to the managed materialized tree.
-- V1 does not need user-configurable `target_mode` (internal manifest field).
-- A future version may add copied Client Discovery Location directories if a client proves incompatible with symlinked skills.
-
-For copied Skill Sources:
+Derives locked state from config intent and existing lockfiles.
 
 ```text
-Skill Source -> Managed Skill Content -> Client Discovery Location symlink
+lock_planner.plan_for_preview(desired, existing_locks, refresh_sources) -> LockPlan
+lock_planner.plan_for_apply(desired, existing_locks, refresh_sources) -> LockPlan
+lock_planner.existing_for_status(desired, existing_locks) -> ExistingLockState
+lock_planner.existing_for_prune(desired, existing_locks) -> ExistingLockState
 ```
 
-Client Discovery Location symlinks must point to the managed materialized tree for the same Install Level:
+Owns:
 
-- project Client Discovery Locations point into project Managed State under `.agentcfg/sources/`
-- user Client Discovery Locations point into user Managed State under `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/`
+- existing lock reuse
+- missing lockfile creation planning
+- `--refresh-sources`
+- path and git Skill Source resolution
+- source-resolution diagnostics
+- config/lock mismatch diagnostics
+- resolved Discovery Name Collision detection after source resolution
 
-Expected symlink target validation:
+Does not read current install state or decide apply/prune policy.
 
-- Manifest records the expected symlink target for each symlinked Installed Artifact.
-- `status` reports missing links, **Broken Symlinks**, and **Unexpected Symlink Targets**.
-- `prune` refuses to remove a symlink whose current target does not match the manifest.
-- `apply` may update a manifest-owned symlink when the previous symlink target matches the manifest and the desired symlink target changed.
+### `current_inventory`
 
-Apply direction is one-way:
+Reads current evidence and normalizes it into `CurrentState`.
 
 ```text
-Skill Source -> Managed Skill Content -> Client Discovery Location
+current_inventory.read(scope) -> CurrentState
 ```
 
-`agentcfg` never writes changes back to a Skill Source. To improve a skill, edit the Skill Source, then run `agentcfg preview --refresh-sources` to preview Source Refresh and `agentcfg apply --refresh-sources` to materialize it into Managed Skill Content.
+It scans entire selected Client Discovery Locations, not only desired paths. Scope is still limited to the active install level and selected clients.
 
-## Lockfiles
+Owns observable facts:
 
-Each Config Layer has an adjacent lockfile that records **Locked Desired State** for Configured Items (V1: skills) that need repeatable Skill Source resolution.
+- Manifest records
+- Managed Skill Content existence
+- discovery path entries
+- unmanaged artifacts
+- symlink targets
+- broken symlinks
+- unexpected symlink target evidence
+- directory emptiness
+- global Managed State references needed for safe scoped prune
 
-Each config layer has an adjacent lockfile:
+It may read global Manifest state to answer safety questions such as whether a shared artifact still has requirements from other clients, but it returns a command-scoped `CurrentState` enriched with reference context.
+
+It does not decide whether something is stale, removable, blocked, or a warning.
+
+### `reconciler`
+
+Owns lifecycle policy and command-specific planning.
 
 ```text
-${XDG_CONFIG_HOME:-~/.config}/agentcfg/lock.toml
-agentcfg.lock
-.agentcfg/lock.toml
+reconciler.preview(PreviewInput) -> PreviewReport
+reconciler.apply(ApplyInput) -> ApplyPlan
+reconciler.prune(PruneInput) -> PrunePlan
+reconciler.status(StatusInput) -> StatusReport
 ```
 
-The lockfile records exact resolved inputs:
-
-- Skill Source id
-- Skill Source type
-- requested git ref, when applicable
-- resolved git commit, when applicable
-- Source Skill Name (as named in the Skill Source)
-- Discovery Name
-- Skill Source hash
-- installed hash
-- Discovery Name preparation flag
-- materialized symlinks
-
-Floating git refs are allowed in config, but lockfiles record concrete commits. Examples of floating refs include `main`, `trunk`, `develop`, and `release/2026-05`; a pinned commit SHA is not floating.
-
-Plain `apply` uses the existing lockfile when present. `apply --refresh-sources` performs Source Refresh, refreshes Skill Source resolutions, and updates active lockfiles.
-
-For path Skill Sources:
-
-- Plain `apply` should install from the locked Managed Skill Content if available.
-- If the lockfile exists but Managed Skill Content is missing, plain `apply` recreates it from the current Skill Source only when the current Skill Source materializes to the locked `source_hash`.
-- If the current Skill Source is unavailable, plain `apply` must fail and ask the user to restore the Skill Source or Managed State.
-- If the current Skill Source is available but no longer matches the locked `source_hash`, plain `apply` must fail and tell the user to run `agentcfg apply --refresh-sources` only if they want to accept the changed Skill Source content.
-- Current path Skill Source edits do not affect plain `apply` while the locked Managed Skill Content exists.
-- `preview --refresh-sources` and `apply --refresh-sources` detect and use changed path Skill Source content.
-
-For git Skill Sources, plain `apply` installs from the locked Managed Skill Content. If that copy is missing, `apply` may recreate it from the locked commit. If the locked commit cannot be fetched, `apply` must fail and ask the user to restore Managed State or make the locked commit available; `apply --refresh-sources` is only appropriate when the user wants to move to a newer resolved commit.
-
-## Manifest
-
-The manifest is **Managed State** ownership records for **Installed Artifacts** and the **Discovery Requirements** that keep shared Installed Artifacts alive.
-
-Project manifest:
+Inputs:
 
 ```text
-.agentcfg/manifest.json
+PreviewInput {
+  proposed_locked: ProposedLockedDesiredState,
+  current: CurrentState,
+}
+
+ApplyInput {
+  proposed_locked: ProposedLockedDesiredState,
+  current: CurrentState,
+}
+
+PruneInput {
+  locked: LockedDesiredState,
+  current: CurrentState,
+}
+
+StatusInput {
+  locked: LockedDesiredState,
+  current: CurrentState,
+}
 ```
 
-User manifest:
+The reconciler assumes locked desired state is internally coherent. Fatal desired-state errors such as resolved Discovery Name Collisions stop before inventory/reconciliation.
+
+Private classifiers are shared inside the module so command behavior does not drift:
+
+- missing desired artifacts
+- artifact updates
+- stale Discovery Requirements
+- stale Installed Artifacts
+- unsatisfied Discovery Requirements
+- unexpected symlink targets
+- broken symlinks
+- unmanaged artifact conflicts
+- apply blockers
+- prune skips
+- status health findings
+
+Public outputs remain command-specific. Callers do not depend on private classifier types.
+
+### `executor`
+
+Owns mutation ordering, private preflight, and last-mile filesystem safety.
+
+Public interface:
 
 ```text
-${XDG_STATE_HOME:-~/.local/state}/agentcfg/manifest.json
+executor.apply(lockfile_changes, apply_plan) -> ApplyExecutionResult
+executor.prune(prune_plan) -> PruneExecutionResult
 ```
 
-Manifest records should include:
+Preflight is private. Callers should not need to remember to preflight before execution.
 
-- kind (`skill` in V1)
-- Skill Source id
-- Source Skill Name
-- Discovery Name
-- `target_path` (internal serialized field)
-- `target_kind` (internal serialized field)
-- installed hash
-- Discovery Requirements (config layer, client, install level)
-- created-by marker
-- Skill Source acquisition mode
-- `target_mode` (internal serialized field)
+`apply()` behavior:
 
-Discovery Requirements should be structured, not just a string list (serialized manifest field may remain `consumers` until schema migration):
+1. run all-or-nothing preflight
+2. if preflight fails, return a no-change blocked result
+3. write lockfile changes
+4. materialize Managed Skill Content
+5. create/update discovery symlinks
+6. update Manifest / Discovery Requirements last
 
-```json
-"consumers": [
-  {"scope": "shared-project", "client": "codex", "install_level": "project"},
-  {"scope": "user-project", "client": "codex", "install_level": "project"}
-]
-```
+`prune()` behavior:
 
-`scope` is the Persisted Scope Value for the Config Layer. This preserves shared Client Discovery Location behavior while supporting layered Discovery Requirements later.
+1. preflight each stale removal
+2. remove safe stale requirements/artifacts
+3. skip unsafe removals
+4. return structured skipped/failure diagnostics
 
-## Managed Skill Content Cleanup
+Executor knows the plan shape and safe write ordering. Low-level stores/adapters own filesystem, symlink, TOML, and Manifest persistence mechanics.
 
-Managed Skill Content under `.agentcfg/sources/` or `${XDG_STATE_HOME:-~/.local/state}/agentcfg/sources/` is rebuildable **Managed State** derived from lockfiles, not user-authored config and not client-visible Installed Artifacts.
+### Stores And Helpers
 
-The manifest owns Installed Artifacts at Client Discovery Locations. It does not need one record per internal Managed Skill Content tree.
+Shared low-level modules:
 
-Cleanup policy:
+- `client_registry`: supported clients and discovery locations
+- `filesystem_probe`: path kind, symlink, writability, directory emptiness
+- `lock_store`: lockfile load/write
+- `manifest_store`: Manifest load/write
+- `managed_content_store`: content-addressed Managed Skill Content writes
+- `discovery_store`: discovery symlink operations
+- `content_digest`: deterministic tree digest rules
 
-- `prune` removes stale Installed Artifacts and stale Discovery Requirements.
-- `prune` may remove Managed Skill Content that is no longer used by any active lockfile or manifest-owned Installed Artifact.
-- If Managed Skill Content cleanup is risky or expensive in the first implementation slice, it may be skipped conservatively.
-- `status` should be able to report unused Managed Skill Content no longer referenced by lockfiles or the Manifest.
+These modules should return structured facts or perform narrow persistence operations. They should not encode command policy.
 
-Never remove user-authored Skill Source directories.
+## Command Flows
 
-## Client Discovery Registry
+### Preview
 
-Client Discovery Location definitions should be built-in defaults with docs-backed provenance and confidence levels. The Client Discovery Registry is the V1 compatibility boundary between client-specific filesystem conventions and the shared preview/apply operation engine.
-
-Client Discovery Registry entries should be keyed by `{configured_item_kind, client, install_level}`. Serialized forms may keep `resource_kind` and Persisted Scope Value until schema migration, but the model should not bake skill-only assumptions into preview records, manifests, or Installed Artifact ownership.
-
-Default policy:
-
-- Prefer portable shared paths where officially supported.
-- Use client-native paths when there is no portable path.
-- Disable uncertain Client Discovery Locations by default.
-
-V1 recommended built-ins:
-
-| Client | Project skills | User skills | Default |
-| --- | --- | --- | --- |
-| Codex | `.agents/skills/{name}` | `~/.agents/skills/{name}` | enabled |
-| Pi | `.agents/skills/{name}` | `~/.agents/skills/{name}` | enabled |
-| OpenCode | `.agents/skills/{name}` | `~/.agents/skills/{name}` | enabled |
-| Claude Code | `.claude/skills/{name}` | `~/.claude/skills/{name}` | enabled |
-| Cline | `.cline/skills/{name}` | `~/.cline/skills/{name}` | enabled |
-| Cursor | `.agents/skills/{name}` | `~/.agents/skills/{name}` | enabled |
-
-Known native alternatives should be represented in the Client Discovery Registry but not necessarily enabled by default:
-
-- Pi: `.pi/skills/{name}`, `~/.pi/agent/skills/{name}`
-- OpenCode: `.opencode/skills/{name}`, `~/.config/opencode/skills/{name}`
-- Cline compatibility paths: `.clinerules/skills/{name}`, `.claude/skills/{name}`
-- Cursor: `.cursor/skills/{name}`, `~/.cursor/skills/{name}`
-
-The Client Discovery Registry should carry confidence/provenance metadata so `doctor` can explain uncertain or experimental Client Discovery Locations. Cline's first-class skill support is experimental, so the Cline `.cline/skills/{name}` Client Discovery Location should be enabled with explicit provenance and an experimental confidence note. Do not use `.agents/skills/{name}` for Cline unless Cline documents or implements that discovery path.
-
-Client families such as clients that share `.agents/skills/{name}` should be represented as multiple Client Discovery Registry entries that resolve to the same Client Discovery Location path, not as a separate family interface. Shared Client Discovery Location behavior belongs to the Discovery Requirement model.
-
-## Shared Client Discovery Locations
-
-When multiple clients use the same Client Discovery Location path, install one Installed Artifact and track multiple Discovery Requirements.
-
-Example:
+`preview` is a read-only forecast, not a reserved transaction.
 
 ```text
-.agents/skills/do-code-review
-Discovery Requirements: codex, pi, opencode (Shared Project Config, Project Level)
+config_layers = config_loader.load_active_layers(...)
+desired = desired_builder.build(config_layers, install_level, clients)
+existing_locks = lock_store.load_for(config_layers)
+lock_plan = lock_planner.plan_for_preview(desired, existing_locks, refresh_sources)
+
+if lock_plan has fatal desired-state diagnostics:
+  report and stop
+
+current = current_inventory.read(scope)
+install_preview = reconciler.preview({ proposed_locked: lock_plan.proposed_locked, current })
+reporter.render_preview({ lock_plan, install_preview })
 ```
 
-Adding a client adds Discovery Requirements. Removing a client makes those Discovery Requirements stale; `prune` removes stale Discovery Requirements and deletes the Installed Artifact only when no Discovery Requirements remain.
+Preview shows:
 
-## Skill Aliases and Discovery Name Collisions
+- lockfile changes that would be created or updated
+- Skill Source resolutions
+- apply creates/updates
+- apply blockers
+- stale requirements/artifacts that prune would remove
+- prune skips
+- Discovery Name preparation
+- warnings for uncertain Client Discovery Locations
 
-Discovery Names must be unique per Client Discovery Location.
+Preview does not write config, lockfiles, Manifest, Managed State, Skill Sources, or discovery locations.
 
-If two Skill Sources select the same Source Skill Name, V1 should fail unless a Skill Alias is configured.
+### Apply
 
-Example:
+`apply` recomputes source/lock planning at apply time. If sources changed since preview, apply uses the apply-time resolution. Future applies then use the persisted lock unless refresh is requested.
 
-```toml
-[skill_aliases]
-"community:code-review" = "security-review"
+This diagram shows the successful apply path. Fatal desired-state diagnostics stop before inventory. Apply blockers stop before executor mutation.
+
+```mermaid
+sequenceDiagram
+    participant CLI as cli
+    participant UseCase as workflow::apply
+    participant Desired as desired_builder
+    participant Lock as lock_planner
+    participant Inventory as current_inventory
+    participant Reconciler as reconciler
+    participant Executor as executor
+    participant Reporter as reporter
+
+    CLI->>UseCase: ApplyRequest
+    UseCase->>Desired: build(config layers, install level, clients)
+    Desired-->>UseCase: DesiredState
+    UseCase->>Lock: plan_for_apply(desired, existing locks, refresh?)
+    Lock-->>UseCase: LockPlan
+    UseCase->>Inventory: read(scope)
+    Inventory-->>UseCase: CurrentState
+    UseCase->>Reconciler: apply(ApplyInput)
+    Reconciler-->>UseCase: ApplyPlan
+    UseCase->>Executor: apply(lockfile_changes, apply_plan)
+    Executor-->>UseCase: ApplyExecutionResult
+    UseCase->>Reporter: render apply result
 ```
-
-Skill Alias behavior:
-
-- Skill Alias changes the Discovery Name exposed to clients.
-- Patch Managed Skill Content `SKILL.md` frontmatter `name`, when present, so Agent Skill Format metadata matches the Discovery Name.
-- Do not mutate the upstream Skill Source.
-- Emit Discovery Name preparation in `preview`.
-- Summarize Discovery Name preparation in `apply`.
-
-Implementation invariant:
 
 ```text
-Discovery Name is the client-facing identity.
+desired = desired_builder.build(...)
+existing_locks = lock_store.load_for(...)
+lock_plan = lock_planner.plan_for_apply(desired, existing_locks, refresh_sources)
+
+if lock_plan has fatal desired-state diagnostics:
+  report and stop
+
+current = current_inventory.read(scope)
+apply_plan = reconciler.apply({ proposed_locked: lock_plan.proposed_locked, current })
+
+if apply_plan has apply blockers:
+  report full plan and blockers
+  exit 2
+
+result = executor.apply(lock_plan.lockfile_changes, apply_plan)
+reporter.render_apply({ lock_plan, apply_plan, result })
 ```
 
-Useful code comment:
+Apply does not knowingly partially proceed. If semantic apply blockers exist, no mutation is attempted. If executor preflight fails, no mutation is attempted. Last-mile failures can still leave partial state; recovery is forward/idempotent through `status`, fixes, and rerun.
 
-```rust
-// The Discovery Name is the identity exposed to Clients. Some Clients read
-// SKILL.md frontmatter while others key off the directory name, so Skill Aliases must
-// prepare Managed Skill Content with one consistent identity. agentcfg must not
-// mutate the Skill Source.
-```
+Apply never prunes. If stale state remains, apply reports the PRD warning to run `agentcfg prune`.
 
-Preserve Source Skill Names in lockfile and manifest for debugging.
-
-## Hashing
-
-Use SHA-256 in V1.
-
-Hash strings should include an algorithm prefix:
+### Prune
 
 ```text
-sha256:<hex>
+desired = desired_builder.build(...)
+existing_locks = lock_store.load_for(...)
+existing_lock_state = lock_planner.existing_for_prune(desired, existing_locks)
+
+if existing_lock_state has fatal desired-state diagnostics:
+  report and stop
+
+current = current_inventory.read(scope)
+prune_plan = reconciler.prune({ locked: existing_lock_state.locked, current })
+result = executor.prune(prune_plan)
+reporter.render_prune({ existing_lock_state, prune_plan, result })
 ```
 
-Hash the deterministic materialized skill directory tree, not only `SKILL.md`.
+Prune may partially proceed. It removes safe stale state and skips unsafe stale removals. If skips remain, exit `2` with recovery guidance.
 
-Materialization order:
+### Status
 
 ```text
-Skill Source content -> safe materialized content -> Discovery Name preparation -> Managed Skill Content
+desired = desired_builder.build(...)
+existing_locks = lock_store.load_for(...)
+existing_lock_state = lock_planner.existing_for_status(desired, existing_locks)
+current = current_inventory.read(scope)
+install_status = reconciler.status({ locked: existing_lock_state.locked, current })
+reporter.render_status({ existing_lock_state, install_status })
 ```
 
-Hashes:
+Status answers two related questions:
 
-- `source_hash`: materialized tree before Discovery Name preparation.
-- `installed_hash`: materialized tree after Discovery Name preparation.
+- Does current managed install state match `LockedDesiredState`?
+- Does the existing locked state still represent active config, or is there config/lock mismatch?
 
-Deterministic tree hash contract:
+Config/lock mismatch is reported at command/report level from `ExistingLockState`, outside the reconciler.
 
-1. Walk the skill directory recursively.
-2. Materialize safe internal symlinks.
-3. Reject external symlinks.
-4. Reject special files.
-5. Keep regular files only.
-6. Normalize relative paths to POSIX-style `/`.
-7. Sort entries lexicographically by normalized path.
-8. For each entry, feed length-prefixed path bytes and length-prefixed content bytes.
-9. Return SHA-256 hex with `sha256:` prefix.
+### Doctor
 
-Document the hash contract in a dedicated doc before relying on it for compatibility.
+Doctor does not perform lock planning by default and does not call the reconciler.
 
-## Symlink and Filesystem Safety
-
-No hard skill size limits in V1.
-
-Symlink rules for all Skill Source types:
-
-- Internal symlink that resolves inside the same skill directory: materialize as regular file/directory content in Managed Skill Content.
-- External symlink that resolves outside the skill directory: reject.
-- Broken symlink: reject.
-- Special files: reject.
-
-Special files include:
-
-- sockets
-- named pipes
-- block devices
-- character devices
-
-Reason: these are not portable skill content and may hang, expose system resources, or have no deterministic content.
-
-## Init, Status, and Doctor Details
-
-`init` should be conservative:
-
-- create config for the selected Config Layer
-- create `.agentcfg/` when needed
-- detect and report existing **Unmanaged Artifacts**
-- not adopt, overwrite, or delete Unmanaged Artifacts
-- not write Client Discovery Location directories; `apply` does that
-
-Filesystem entries at Client Discovery Locations during init that are not in the Manifest are **Unmanaged Artifacts**:
-
-```text
-Found existing unmanaged artifacts:
-  .agents/skills/do-code-review
-
-agentcfg will not modify or remove them.
-```
-
-Adoption/import is out of V1 unless a concrete migration need forces it.
-
-Init scan safety notes (V1):
-
-- Init only **reads** Client Discovery Location roots. If a discovery root path is a symlink, `read_dir` lists the **target** directory; reported paths stay under the logical discovery root name. This can surface filenames from another tree without writing anything. Apply and prune must enforce manifest symlink rules separately (M6).
-- `init` uses `create_dir_all` then `create_new` for config files. If an attacker controls a parent path component as a symlink, the config file could be created outside the intended directory. V1 assumes a trusted local environment; hardening (refuse symlink parents) is deferred until apply writes Client Discovery Locations.
-
-`status` checks managed install-state consistency:
-
-- Installed Artifacts by Client
-- **Broken Symlinks**
-- **Unexpected Symlink Targets**
-- missing Managed Skill Content
-- **Stale Installed Artifacts**
-- **Unsatisfied Discovery Requirements**
-- **Unmanaged Artifacts** in configured Client Discovery Locations, reported as informational unless they conflict with desired Installed Artifacts
-- config/lock mismatch
-- manifest readability
-
-`doctor` checks environment and configuration readiness:
+It checks readiness:
 
 - git availability
 - Project Root detection
-- known/supported clients
-- path writability
+- supported clients
+- client discovery location confidence
 - config schema validity
-- optional network/Skill Source checks
-- Client Discovery Location confidence warnings
-- **Unmanaged Artifacts** only when they affect environment health, such as blocking a previewed Client Discovery Location path
+- path writability
+- optional source/network checks when requested or configured
+- unmanaged artifacts only when they block known readiness paths
 
-`doctor` may be slower and more explanatory. `status` should be fast, local, and scriptable. `doctor` does not report managed install-state consistency.
+Doctor reuses shared evidence modules where useful, but it does not compare current install state to locked desired state.
 
-## Implementation Boundary
+## Preview And Reporting Terms
 
-Keep implementation design skill-first. The preview/apply operation boundary is the important one:
+Use precise command-impact terms.
 
-```text
-resolve Configured Item Desired State -> desired Installed Artifacts -> build preview/apply operations -> render preview OR apply operations
-```
+- **Apply blockers**: conditions that prevent `apply` from executing any planned mutations.
+- **Prune skips**: stale removals that `prune` will skip while continuing with other safe removals.
+- **Status findings**: install-state consistency facts.
+- **Config/lock mismatch**: active config asks for source/selection/client intent that existing lockfiles do not represent.
 
-`preview` and `apply` should share the same operation builder.
-
-V1 has one Configured Item resolver: skills (`kind = "skill"`). The Skill Selection and materialization pipeline owns config parsing, Skill Source discovery, Skill Group expansion, Skill Alias resolution, materialization, and skill hashes. After that, the shared preview/apply/status/prune machinery should operate on structured desired Installed Artifacts:
-
-- `kind = "skill"`
-- Client Discovery Location path and `target_mode` (internal manifest field)
-- Managed Skill Content path
-- Discovery Name and installed hash
-- Skill Source/Config Layer provenance
-- Discovery Requirements keyed by Config Layer, Client, and Install Level
-
-This keeps the current implementation skill-first while avoiding skill-specific duplication in discovery operation generation, manifest safety, and client diagnostics.
-
-## Cargo Workspace Boundary
-
-V1 should use a single Cargo workspace with separate CLI and core library crates:
+Partial and blocked outcomes must include structured recovery diagnostics:
 
 ```text
-crates/agentcfg-cli/
-crates/agentcfg-core/
+Refusal {
+  path,
+  reason,
+  required_by,
+  expected_action,
+  recovery_steps,
+}
 ```
 
-The `agentcfg-cli` crate owns the command-line interface:
+Exit codes:
 
-- argument parsing
-- terminal rendering
-- exit codes
-- command-specific user interaction
+- `0`: full success
+- `1`: fatal command/config/environment error before meaningful planning or execution
+- `2`: command completed or planned, but convergence/cleanup was blocked or skipped
 
-The `agentcfg-core` crate owns the reusable skill-management engine:
+Document exit codes in user-facing command docs. Keep code comments centralized at exit-code mapping.
 
-- config discovery, parsing, and validation
-- Skill Source discovery and resolution
-- safe materialization and hashing
-- lockfile and manifest models
-- desired-state operation generation
-- apply, prune, status, and doctor operations
-- built-in Client Discovery Registry
-- filesystem safety invariants
+## Manifest Model
 
-The published binary name remains:
+The Manifest separates Installed Artifacts from Discovery Requirements.
 
 ```text
-agentcfg
+Manifest {
+  installed_artifacts: Map<ArtifactKey, InstalledArtifact>,
+  discovery_requirements: Map<RequirementKey, DiscoveryRequirement>,
+}
 ```
 
-The core crate is the boundary for future non-CLI interfaces such as a TUI, desktop UI, editor integration, daemon, or tests that need structured preview/status results. Those interfaces should call the same preview/apply operation APIs as the CLI instead of shelling out to the `agentcfg` binary or duplicating operation-generation logic.
-
-Do not make the core crate a broad generic platform in V1. Its public surface should remain skill-first and should expose structured domain results rather than terminal-formatted text. A separately branded `agentcfg-sdk` crate or stabilized external API can be added later if real downstream integrators need stronger compatibility guarantees.
-
-## Future Configured Item Types
-
-V1 should be implemented as a skill-first resolver plus shared discovery operation generation and application. It is acceptable for manifest or preview operation records to include `kind = "skill"` and for the Client Discovery Registry to key entries by Configured Item kind, but do not build generic Configured Item manager traits, factories, or interfaces before a second Configured Item kind exists.
-
-Future versions may add Configured Item kinds such as MCP servers, hooks, rules, commands, and workflows. MCP should be a separate Configured Item kind later, not a projection of a skill.
-
-## Post-V1 Design Holding Area
-
-These are intentionally deferred decisions. They are not V1 commitments, but V1 should avoid choices that make them hard.
-
-### Configured Item-specific CLI selectors
-
-The default command meaning should be aggregate desired-state apply:
+Artifact identity is physical discovery identity:
 
 ```text
-agentcfg apply = apply all Configured Item kinds for the selected Install Level
+ArtifactKey {
+  install_level,
+  client_discovery_location,
+  discovery_name,
+}
 ```
 
-In V1, skills are the only Configured Item kind, so `agentcfg apply` only installs skills as a consequence of the V1 Configured Item set. Do not define the command's meaning as "apply skills"; that would make adding MCP or other Configured Items later a semantic change.
+`ArtifactKey` excludes client, Config Layer, and digest. Multiple clients and layers can require the same physical artifact. Digest is artifact state; a changed digest means update the artifact.
 
-Possible future narrowing commands:
+Requirement identity is who requires the artifact:
 
 ```text
-agentcfg preview skills
-agentcfg apply skills
-agentcfg status skills
-agentcfg prune skills
-
-agentcfg preview mcp
-agentcfg apply mcp
-agentcfg status mcp
+RequirementKey {
+  config_layer,
+  install_level,
+  client,
+  client_discovery_location,
+  discovery_name,
+}
 ```
 
-These commands should narrow the aggregate workflow to one Configured Item kind. They should not be required for normal setup.
+`RequirementKey` excludes digest. Required digest is requirement state.
 
-### Additional Configured Item kinds
+```text
+InstalledArtifact {
+  key: ArtifactKey,
+  discovery_path,
+  target,
+  digest: TreeDigest,
+}
 
-Future Configured Item kinds may include MCP servers, hooks, rules, commands, and workflows. Each Configured Item kind should own its own config parsing, external-origin resolution when needed, conflict rules, safety rules, and apply behavior. Shared core code may coordinate structured preview/status/apply results, but it should not force every Configured Item into the skill Installed Artifact model.
+DiscoveryRequirement {
+  key: RequirementKey,
+  artifact_key: ArtifactKey,
+  required_digest: TreeDigest,
+  locked_skill_ref: LockedSkillRef,
+}
+```
 
-### MCP design questions
+`DiscoveryRequirement` stores minimal provenance for reporting only. It does not duplicate source URL/path/git ref resolution from lockfiles.
 
-Deferred MCP work should answer:
+```text
+LockedSkillRef {
+  config_source_id,
+  source_skill_name,
+  discovery_name,
+}
+```
 
-- how server identity and conflicts are represented
-- how environment variables and secrets are referenced without leaking into shared config or lockfiles
-- whether MCP apply writes Project Level config, User Config, client-native config, or some combination
-- how preview, rollback, and unmanaged-edit safety work for JSON or client-native configuration-file edits
-- whether MCP needs its own external-origin acquisition and lock model or only desired server records
+Prune removes stale Discovery Requirements first. It removes an Installed Artifact only when no Discovery Requirements remain for its `ArtifactKey`.
+
+## Managed Skill Content
+
+Managed Skill Content is content-addressed by prepared content digest.
+
+```text
+Managed State/content/skills/sha256/2a/2a56c8...fed/
+Client Discovery Location/review -> Managed State/content/skills/sha256/2a/2a56c8...fed/
+```
+
+Prepared content includes alias/frontmatter preparation. If preparation changes bytes, it naturally produces a different digest.
+
+Discovery artifacts are symlinks to content-addressed Managed Skill Content. Copy mode is not a first-class V1 install mode unless a client/platform forces it later.
+
+Content addressing deduplicates within one Managed State root. V1 does not deduplicate project-level Managed Skill Content across different projects or between project and user Managed State roots.
+
+## Successful State Example
+
+This example uses placeholders for Managed State roots. The exact Managed State path is a persistence contract to define alongside implementation; the important shape is that Client Discovery Locations point to content-addressed Managed Skill Content.
+
+Project-level state after `agentcfg apply`:
+
+```text
+<project-root>/
+  agentcfg.toml                         Shared Project Config
+  agentcfg.lock                         Shared Project Config lockfile
+  .agentcfg/
+    config.toml                         User Project Config
+    lock.toml                           User Project Config lockfile
+  .agents/
+    skills/
+      review -> <project-managed-state>/content/skills/sha256/2a/2a56c8...fed/
+      test   -> <project-managed-state>/content/skills/sha256/9f/9fb12e...071/
+  .claude/
+    skills/
+      review -> <project-managed-state>/content/skills/sha256/2a/2a56c8...fed/
+
+<project-managed-state>/
+  manifest.toml
+  content/
+    skills/
+      sha256/
+        2a/
+          2a56c8...fed/
+            SKILL.md
+            ...
+        9f/
+          9fb12e...071/
+            SKILL.md
+            ...
+```
+
+User-level state after `agentcfg apply --user`:
+
+```text
+${XDG_CONFIG_HOME:-~/.config}/agentcfg/
+  config.toml                           User Config
+  lock.toml                             User Config lockfile
+
+~/.agents/
+  skills/
+    personal-review -> <user-managed-state>/content/skills/sha256/c4/c4926a...8d3/
+
+~/.claude/
+  skills/
+    personal-review -> <user-managed-state>/content/skills/sha256/c4/c4926a...8d3/
+
+<user-managed-state>/
+  manifest.toml
+  content/
+    skills/
+      sha256/
+        c4/
+          c4926a...8d3/
+            SKILL.md
+            ...
+```
+
+Shared portable discovery paths can produce multiple Discovery Requirements for one Installed Artifact. For example, Codex, Pi, OpenCode, and Cursor may all require `.agents/skills/review`, but the physical artifact is one symlink keyed by its discovery location and Discovery Name.
+
+Compact Manifest excerpt for the project-level `review` example:
+
+```text
+[installed_artifacts."project:.agents/skills:review"]
+discovery_path = ".agents/skills/review"
+target = "<project-managed-state>/content/skills/sha256/2a/2a56c8...fed"
+digest = "sha256:2a56c8...fed"
+
+[discovery_requirements."SharedProject:project:Codex:.agents/skills:review"]
+artifact_key = "project:.agents/skills:review"
+required_digest = "sha256:2a56c8...fed"
+locked_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
+
+[discovery_requirements."SharedProject:project:Cursor:.agents/skills:review"]
+artifact_key = "project:.agents/skills:review"
+required_digest = "sha256:2a56c8...fed"
+locked_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
+```
+
+## Content Digest
+
+`content_digest` owns deterministic tree digest rules.
+
+```text
+TreeDigest {
+  algorithm: "sha256",
+  value,
+}
+```
+
+Canonical digest includes:
+
+- relative paths in sorted order
+- file bytes
+- file type
+- symlink target if symlinks are preserved after materialization
+- normalized executable bit if preserved
+
+Canonical digest excludes:
+
+- mtimes
+- uid/gid
+- platform-specific metadata
+- absolute source paths
+
+Used by:
+
+- source/lock planning to identify locked content
+- materialization verification
+- inventory recovery checks
+- executor recovery before recording ownership
+- tests
+
+It does not know about Skills, Manifest, or command policy.
+
+## Safety And Recovery
+
+Default conflict recourse is refusal, not overwrite/adopt/delete.
+
+V1 does not provide:
+
+- `--force`
+- `--overwrite-unmanaged`
+- `--adopt-existing`
+- transactional rollback
+- autoprune on apply
+
+User influence happens before rerun through:
+
+- `--client`
+- config client selection
+- Skill Alias / Discovery Name changes
+- manual filesystem cleanup
+
+Safety ownership:
+
+```text
+current_inventory:
+  observes filesystem facts
+
+reconciler:
+  classifies semantic blockers, skips, removability, and status findings
+
+executor:
+  preflights write readiness and revalidates immediately before mutation
+```
+
+Examples:
+
+- unmanaged artifact at desired path: apply blocker
+- unexpected symlink target on stale artifact: prune skip
+- broken symlink: status finding; apply may replace only if ownership is clear
+- directory deletion: allowed only when stale, manifest-owned, unreferenced, and empty
+
+If an artifact creation succeeds but Manifest update fails, rerun `apply` may record Manifest ownership only when the existing artifact exactly matches the current `ApplyPlan`:
+
+- symlink target equals expected content-addressed Managed Skill Content path, or copied content digest matches if copy mode exists
+- Managed Skill Content digest equals expected `TreeDigest`
+- expected digest comes from the current plan
+
+This is interrupted-write recovery, not general unmanaged adoption.
+
+## Design Guardrails
+
+- Do not build a generic resource graph engine.
+- Do not parameterize the reconciler by Configured Item kind.
+- Do not expose internal resource IDs as public contracts.
+- Do not make `ApplyPlan` an executable filesystem script.
+- Do not put source resolution or lockfile mechanics in the reconciler.
+- Do not put lifecycle policy in the executor.
+- Do not duplicate filesystem probing between preview/apply/status/doctor; share evidence modules.
+- Do not treat unmanaged artifacts as managed resources.
+- Do not make every PRD noun a module. Modules must protect invariants, reduce caller burden, or improve locality.

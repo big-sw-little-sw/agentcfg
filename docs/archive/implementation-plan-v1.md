@@ -4,6 +4,8 @@ This document breaks V1 into implementation milestones. Product intent lives in 
 
 The plan is optimized for agent execution. Each task should be small enough that an implementation agent has at least 90% confidence it can complete the task from this document, the PRD, and the design doc without needing another design discussion.
 
+Architecture rationale for the remaining V1 work lives in [architecture-synthesis-2026-05-29.md](architecture-synthesis-2026-05-29.md). Keep this plan concise; use the synthesis note for ownership rationale and post-V1 extension constraints.
+
 ## Agent Task Rules
 
 - Keep each task focused on one ownership boundary.
@@ -309,7 +311,7 @@ cargo test --workspace desired_state namespaced_skill_source
 #### Task M1.6.4: Workflow split follow-ups (M2 prerequisites)
 
 - [x] Implement path Skill Source discovery under `skill_source/` (M2.1) — do not grow `workflow::init` with resolution logic.
-- [ ] Add `--client` when starting desired-state / preview work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
+- [ ] Add `--client` when starting Client Discovery Registry resolution/filtering work (see M5.2 in this plan); PRD documents the flag before CLI exposes it.
 - [ ] Validate explicit `skills.clients` against the Client Discovery Registry when client resolution lands (M5.2).
 - [x] Tighten init Unmanaged Artifact scan to skill-shaped entries (directories containing `SKILL.md`); warn when user init cannot scan user-level Client Discovery Locations (`HOME` unset).
 
@@ -385,7 +387,7 @@ cargo test -p agentcfg-core skill_source_groups
 cargo test -p agentcfg-core skill_selection
 ```
 
-#### Task M2.4: Apply Skill Aliases and produce Discovery Names
+#### Task M2.4: Stage Skill Selection for Discovery Names
 
 - [ ] Apply layer-local Skill Aliases after Skill Source-local Skill Group expansion.
 - [ ] Treat Discovery Name as the discoverable identity for Clients.
@@ -393,7 +395,8 @@ cargo test -p agentcfg-core skill_selection
 - [ ] Preserve Source Skill Names for lockfile and manifest records.
 - [ ] Keep output structured enough for later Discovery Name Collision detection at Client Discovery Locations.
 - [ ] Expose Skill Selection output with Discovery Names as a lower-level core API, not a CLI-rendered summary.
-- [ ] Add tests for Skill Alias success, unaliased skills, and Source Skill Name preservation.
+- [ ] Keep Discovery Name Collision detection out of M2.4; it requires Client Discovery Location context.
+- [ ] Add tests for Skill Alias success, unaliased skills, Source Skill Name preservation, and deterministic Discovery Name output.
 
 Validation:
 
@@ -477,6 +480,20 @@ cargo test -p agentcfg-core discovery_name_preparation
 
 Goal: make path Skill Source apply repeatable from Locked Desired State in Managed State.
 
+#### Task M4.0: Build active Install Level context
+
+- [ ] Add a workflow context helper that resolves an Install Level into Active Config Layers, config file paths, adjacent lockfile paths, Managed State paths, Project Root, and User paths.
+- [ ] Keep Client Discovery Location resolution in the Client Discovery Registry, not in the Install Level context.
+- [ ] Expose user-level Managed State paths through the context helper so apply/status/prune do not re-read environment variables ad hoc.
+- [ ] Update later workflow code to consume this helper rather than rebuilding path policy from `cwd`, `UserDirs`, and command flags.
+- [ ] Add tests for Project Level vs User Level context, lockfile paths, Managed State paths, and no ad hoc environment reads in later workflows.
+
+Validation:
+
+```sh
+cargo test -p agentcfg-core install_level_context
+```
+
 #### Task M4.1: Define lockfile models and TOML persistence
 
 - [ ] Model lockfile records for path Skill Sources.
@@ -537,7 +554,7 @@ cargo test --workspace source_refresh read_only_preview
 
 Goal: produce structured preview results once and render them through the CLI.
 
-#### Task M5.1: Implement built-in Client Discovery Registry
+#### Task M5.1: Implement Client Discovery Registry definitions
 
 - [ ] Add V1 default Clients and skill Client Discovery Location paths.
 - [ ] Key Client Discovery Registry entries by `{configured_item_kind, client, install_level}` with only `configured_item_kind = "skill"` in V1; serialized forms may keep `resource_kind` and Persisted Scope Value until schema migration.
@@ -554,16 +571,33 @@ Validation:
 cargo test -p agentcfg-core discovery_registry
 ```
 
-#### Task M5.2: Build Desired State from active Config Layers
+#### Task M5.2: Resolve Clients and client filters
+
+- [ ] Expand `clients = "all"` through the Client Discovery Registry for the selected Install Level.
+- [ ] Validate explicit `skills.clients` against known V1 Clients.
+- [ ] Add repeatable CLI `--client` for `preview`, `apply`, `prune`, and `status`; carry it through workflow requests as a client filter.
+- [ ] Treat omitted `--client` as all Clients selected by active Config Layers.
+- [ ] Validate that each requested `--client` is both a known V1 Client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 Client.
+- [ ] Do not let CLI flags add Clients outside the configured selection in V1.
+- [ ] Return resolved Client facts and Client Discovery Locations for Desired State construction; Desired State should not parse or validate client strings itself.
+- [ ] Add tests for `clients = "all"`, explicit clients, invalid configured clients, repeated `--client`, invalid requested clients, and shared Client Discovery Location resolution.
+
+Validation:
+
+```sh
+cargo test -p agentcfg-core client_resolution
+cargo test --workspace client_filter
+```
+
+#### Task M5.3: Assemble Desired State from prepared skill install intent and resolved Clients
 
 - [ ] Combine Shared Project Config and User Project Config for project commands.
 - [ ] Use only User Config for `--user` commands.
-- [ ] Apply additive client selection across active Config Layers.
-- [ ] Add repeatable CLI `--client` for `preview`, `apply`, `prune`, and `status`; carry it through workflow requests as a client filter.
-- [ ] Treat omitted `--client` as all Clients selected by active Config Layers.
-- [ ] Validate that each requested `--client` is both a known V1 Client and selected by the active config; when config uses `clients = "all"`, allow any supported V1 Client. Do not let CLI flags add Clients outside the configured selection.
+- [ ] Apply additive client selection across active Config Layers using resolved Client facts from M5.2.
 - [ ] Convert Skill Selection output into structured Desired State entries for Installed Artifacts before previewing apply changes.
 - [ ] Include configured item kind, Client Discovery Location path, symlink mode, Managed Skill Content path, Discovery Name, installed hash, Skill Source/Config Layer provenance, and Discovery Requirements keyed by Config Layer, Client, and Install Level. Do not require `include`/`groups` selection-reason provenance from Skill Selection output.
+- [ ] Preserve enough Config Layer, Skill Source, Discovery Name, installed hash, and Client Discovery Location context for later Discovery Name Collision detection.
+- [ ] Do not apply Skill Aliases, resolve Clients, resolve Client Discovery Locations, read environment paths, or generate operation diffs in Desired State assembly.
 - [ ] Expose Desired State construction as a lower-level core API that `preview`, `apply`, `status`, and `prune` can share.
 - [ ] Add tests for project layering, user-only mode, and shared Client Discovery Location Discovery Requirements.
 
@@ -573,7 +607,7 @@ Validation:
 cargo test -p agentcfg-core desired_state
 ```
 
-#### Task M5.3: Generate structured preview entries
+#### Task M5.4: Build shared preview/apply operation entries
 
 - [ ] Re-evaluate whether `workflow/types.rs` should split (for example `workflow/types/init.rs` vs preview/apply request types) once preview and apply result fields are defined; avoid a single growing DTO module before adding M5 fields.
 - [ ] Detect Discovery Name Collisions per Client Discovery Location path after Client Discovery Registry resolution.
@@ -587,7 +621,7 @@ cargo test -p agentcfg-core desired_state
 - [ ] Keep preview operation records structured and free of terminal formatting.
 - [ ] Keep preview operation records configured-item-kind aware but skill-first; do not add generic Configured Item manager interfaces.
 - [ ] Expose the operation builder as a lower-level core API that consumes Desired State entries and current lock/manifest state.
-- [ ] Add tests for create, update, no-op, and stale reporting previews.
+- [ ] Add tests for create, update, no-op, stale reporting previews, and Discovery Name Collision diagnostics.
 
 Validation:
 
@@ -595,7 +629,7 @@ Validation:
 cargo test -p agentcfg-core preview_operations
 ```
 
-#### Task M5.4: Render `preview` output in the CLI
+#### Task M5.5: Render `preview` output in the CLI
 
 - [ ] Render structured preview entries as human-readable terminal output.
 - [ ] Include Discovery Name preparation and uncertain Client Discovery Location warnings.
@@ -626,36 +660,37 @@ Validation:
 cargo test -p agentcfg-core manifest
 ```
 
-#### Task M6.2: Apply Installed Artifact creates and updates
+#### Task M6.2: Classify current install health
 
-- [ ] Expose user-level Managed State paths through `WorkflowContext` (delegate to `UserDirs::state_home()` and `ManagedStatePaths::for_user`) so apply/status/prune do not re-read environment variables ad hoc.
+- [ ] Populate `install_health` with structured current-state facts for Client Discovery Locations, the Manifest, and Managed Skill Content.
+- [ ] Classify Unmanaged Artifacts, Broken Symlinks, Unexpected Symlink Targets, missing Managed Skill Content, Stale Discovery Requirements, Stale Installed Artifacts, Unsatisfied Discovery Requirements, and unused Managed Skill Content.
+- [ ] Compare manifest Discovery Requirements against Desired State.
+- [ ] Mark removed Config Layer/Client pairs as Stale Discovery Requirements.
+- [ ] Mark Installed Artifacts with no remaining Discovery Requirements as Stale Installed Artifacts.
+- [ ] Expose install-health classification as a lower-level core API shared by preview reporting, apply, prune, status, and doctor.
+- [ ] Add tests for shared `.agents/skills` Discovery Requirements across Codex, Pi, OpenCode, and Cursor, Unexpected Symlink Target refusal facts, unmanaged conflicts, and missing Managed Skill Content.
+
+Validation:
+
+```sh
+cargo test -p agentcfg-core install_health
+cargo test -p agentcfg-core shared_discovery_requirements
+```
+
+#### Task M6.3: Apply Installed Artifact creates and updates
+
 - [ ] Create Client Discovery Location symlinks to Managed Skill Content.
 - [ ] Update manifest-owned symlinks only when the current symlink target matches the manifest `target_path`.
 - [ ] Refuse to overwrite Unmanaged Artifacts or Unexpected Symlink Targets.
 - [ ] Add required Discovery Requirements to manifest records.
 - [ ] Warn when Stale Installed Artifacts remain after apply.
-- [ ] Expose apply as a lower-level core API that consumes structured preview operation entries; keep terminal warnings in the CLI renderer.
+- [ ] Expose apply as a lower-level core API that consumes structured preview operation entries plus install-health records; keep terminal warnings in the CLI renderer.
 - [ ] Add tests for create, safe update, Unmanaged Artifact conflict, and Unexpected Symlink Target refusal.
 
 Validation:
 
 ```sh
 cargo test -p agentcfg-core apply_install
-```
-
-#### Task M6.3: Detect Stale Discovery Requirements and Stale Installed Artifacts
-
-- [ ] Compare manifest Discovery Requirements against Desired State.
-- [ ] Mark removed Config Layer/Client pairs as Stale Discovery Requirements.
-- [ ] Mark Installed Artifacts with no remaining Discovery Requirements as Stale Installed Artifacts.
-- [ ] Detect unused Managed Skill Content as Managed State leftovers.
-- [ ] Expose stale-state detection as a lower-level core API shared by preview reporting and prune.
-- [ ] Add tests for shared `.agents/skills` Discovery Requirements across Codex, Pi, OpenCode, and Cursor.
-
-Validation:
-
-```sh
-cargo test -p agentcfg-core stale_state shared_discovery_requirements
 ```
 
 #### Task M6.4: Implement prune safety engine
@@ -665,7 +700,7 @@ cargo test -p agentcfg-core stale_state shared_discovery_requirements
 - [ ] Refuse to prune Unexpected Symlink Targets.
 - [ ] Never delete Unmanaged Artifacts that are real files.
 - [ ] Delete directories only if empty and manifest-owned.
-- [ ] Expose prune apply as a lower-level core API that consumes stale-state records.
+- [ ] Expose prune apply as a lower-level core API that consumes install-health records.
 - [ ] Add tests for each safety invariant.
 
 Validation:
@@ -680,6 +715,7 @@ Goal: expose local consistency and environment diagnostics without duplicating o
 
 #### Task M7.1: Implement structured status checks
 
+- [ ] Consume install-health records from M6.2 instead of rescanning Client Discovery Locations.
 - [ ] Report Installed Artifacts by Client.
 - [ ] Report Broken Symlinks and Unexpected Symlink Targets.
 - [ ] Report missing Managed Skill Content.
@@ -687,7 +723,7 @@ Goal: expose local consistency and environment diagnostics without duplicating o
 - [ ] Report config/lock mismatch.
 - [ ] Report Unmanaged Artifacts as informational unless they conflict.
 - [ ] Expose status checks as structured core results so CLI rendering stays separate.
-- [ ] Add tests using temporary manifests and Client Discovery Location directories.
+- [ ] Add tests using injected install-health records and focused temporary manifests / Client Discovery Location directories where classification itself is under test.
 
 Validation:
 
@@ -712,14 +748,14 @@ cargo test --workspace status_render
 
 - [ ] Check git availability.
 - [ ] Check Project Root detection.
-- [ ] Check supported Clients and Client Discovery Location confidence.
+- [ ] Check supported Clients and Client Discovery Location confidence through Client Discovery Registry results.
 - [ ] Check path writability.
 - [ ] Check config schema validity.
-- [ ] Check Unmanaged Artifacts only when they block previewed Client Discovery Location paths.
+- [ ] Consume install-health records for Unmanaged Artifacts, and report them only when they block previewed Client Discovery Location paths.
 - [ ] Keep optional network/Skill Source checks isolated so local doctor remains deterministic in tests.
 - [ ] Optionally report configured path Skill Sources that exist but discover zero skills (informational/warning; not required for M2.1).
 - [ ] Expose doctor checks as structured core results with severity and context; do not return terminal-formatted text from core.
-- [ ] Add tests with injectable command/path probes.
+- [ ] Add tests with injectable command/path probes, Client Discovery Registry facts, and install-health records.
 
 Validation:
 
@@ -777,7 +813,9 @@ cargo test -p agentcfg-core git_resolution
 - [ ] Reuse Skill Source-local Skill Group resolution.
 - [ ] Reuse safe materialization and hashing.
 - [ ] Reuse Discovery Name preparation behavior.
+- [ ] Produce the same prepared skill install intent consumed by Desired State and the shared operation builder as path Skill Sources.
 - [ ] Add tests proving path and git Skill Sources produce equivalent Managed Skill Content for equivalent content.
+- [ ] Add tests proving path and git resolvers feed the same Desired State and operation-builder path.
 
 Validation:
 

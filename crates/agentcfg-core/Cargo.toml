@@ -1,16 +1,11 @@
 [package]
 name = "agentcfg-core"
+version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-version.workspace = true
 
-[lib]
-path = "src/lib.rs"
+[lints]
+workspace = true
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-thiserror = "1"
-toml = "0.8"
-
-[dev-dependencies]
-tempfile = "3"
