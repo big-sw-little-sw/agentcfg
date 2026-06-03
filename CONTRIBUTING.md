@@ -27,17 +27,20 @@ prek install
 
 ## Validate changes
 
+Before opening a PR, run full repo validation:
+
 ```sh
+scripts/validate-all.sh
+```
+
+The script runs repo hooks and then tests:
+
+```sh
+prek run --all-files --skip no-commit-to-branch
 cargo test --workspace
 ```
 
-Before opening a PR, you can run the same checks locally:
-
-```sh
-prek run --all-files
-```
-
-Hooks include file hygiene checks plus `cargo fmt` and `cargo clippy --all-targets --all-features -- -D warnings`.
+The `prek` command skips only the branch-protection hook so validation can run on any local branch. Hooks include file hygiene checks plus `cargo fmt` and `cargo clippy --all-targets --all-features -- -D warnings`. Tests intentionally run separately through Cargo.
 
 ## Project layout
 
