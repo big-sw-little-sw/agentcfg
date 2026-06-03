@@ -1,1 +1,0 @@
-../../../my-agent-config/skills/skills/do-design-pass/SKILL.md

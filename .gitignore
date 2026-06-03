@@ -1,6 +1,10 @@
 /target
 /.agent-config/
 /.pi/
+/.cline/
+/.clinerules/
+/.cursor/
+/.opencode/
 /.agents/*
 !/.agents/skills/
 !/.agents/skills/**
