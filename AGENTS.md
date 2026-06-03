@@ -1,6 +1,6 @@
 # Agent instructions
 
-`agentcfg` manages Agent Configuration as repeatable desired state. This file is stable policy for coding agents. **Current implementation status** is in [README.md](README.md) § Status.
+`agentcfg` manages Agent Configuration as repeatable desired state. This file is stable policy for coding agents.
 
 ## Read first
 
@@ -12,11 +12,30 @@ Do **not** read files under `docs/archive/` unless the user specifically asks yo
 
 ## Implementation status
 
-The repository is currently a clean slate: no package workspace, source tree, tests, lockfile, or toolchain pin is present. No build or test command is defined until a new implementation is added.
+The repository currently has a minimal Rust Cargo workspace for `agentcfg-core` and `agentcfg-cli`. V1 implementation is still early; use the product terms and safety rules from `CONTEXT.md`, `docs/prd.md`, and `docs/design-v1.md` when adding real behavior.
 
-When starting a new implementation, use the product terms and safety rules from `CONTEXT.md`, `docs/prd.md`, and `docs/design-v1.md`. The V1 Cargo workspace boundary described in `docs/design-v1.md` remains the active architectural target unless a newer approved plan changes it.
+The V1 Cargo workspace boundary described in `docs/design-v1.md` remains the active architectural target unless a newer approved plan changes it.
 
 Stable TOML field names (`scope`, `include`, `groups`, `skill_aliases`) are intentional; do not rename them to match glossary prose.
+
+## Validation
+
+Run full repo validation with:
+
+```bash
+scripts/validate-all.sh
+```
+
+The script runs:
+
+```bash
+prek run --all-files --skip no-commit-to-branch
+cargo test --workspace
+```
+
+The `prek` command disables only the branch-protection hook so agents can validate on any working branch. Do not skip other hooks unless a task-specific reason requires it, and report any validation command that was not run.
+
+`prek` owns file hygiene plus Rust formatting and linting. Tests intentionally run separately through Cargo. Focused commands such as targeted package tests are fine during iteration, but final validation for code changes should use `scripts/validate-all.sh` when feasible.
 
 ## Conventions
 
