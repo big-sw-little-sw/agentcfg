@@ -180,9 +180,9 @@ _Avoid_: project scope
 The Install Level that applies User Config to user-level Client Discovery Locations.
 _Avoid_: user scope
 
-**Persisted Scope Value**:
-The string stored in a Config Layer to identify what kind of layer it is. V1 Persisted Scope Values are `shared-project`, `user-project`, and `user`.
-_Avoid_: scope, TOML scope
+**Persisted Config Layer Value**:
+The string stored in the persisted `config-layer` field to identify what kind of Config Layer a file is. V1 Persisted Config Layer Values are `shared-project`, `user-project`, and `user`.
+_Avoid_: persisted scope value, scope, TOML scope
 
 ### Workflows
 
@@ -209,7 +209,7 @@ _Avoid_: status, inspect
 ## Flagged Ambiguities
 
 **Scope**:
-Resolved as ambiguous. Use **Config Layer**, **Install Level**, or **Persisted Scope Value** instead.
+Resolved as ambiguous. Use **Config Layer**, **Install Level**, or **Persisted Config Layer Value** instead.
 
 **Source**:
 Resolved as ambiguous. Use a Configured Item-specific external-origin term such as **Skill Source**; future external-origin terms should be added only for Configured Item kinds that actually have an external origin to resolve.

@@ -277,6 +277,28 @@ LockedDesiredState {
 
 The normalized skill resources include desired Managed Skill Content, desired Installed Artifacts, and desired Discovery Requirements.
 
+## Config File Shape
+
+Persisted Config Layer files use compact TOML field names where nesting already supplies the Skill Configuration context. These persisted names are part of the V1 design contract: `config-layer`, `include`, `groups`, and `aliases`.
+
+Example:
+
+```toml
+config-layer = "user-project"
+clients = ["codex", "cursor"]
+
+[[skills.sources]]
+id = "team"
+path = "../skills"
+include = ["review"]
+groups = ["rust"]
+aliases = { review = "project-review" }
+```
+
+`config-layer` stores a Persisted Config Layer Value: `shared-project`, `user-project`, or `user`. `include`, `groups`, and `aliases` are per-Skill Source fields. `aliases` stores Skill Alias rules from Source Skill Name to Discovery Name.
+
+Omitted `include`, `groups`, and `aliases` fields default to empty. `path` and `git` are mutually exclusive Skill Source locator fields; config validation enforces that exactly one is present.
+
 ## Command Composition Types
 
 Command use cases compose lock planning, reconciliation, execution, and reporting through command-level types. These types keep lockfile/source diagnostics outside the reconciler while still giving reporters one coherent command result.
@@ -367,10 +389,10 @@ Does not read current install state or decide apply/prune policy.
 Reads current evidence and normalizes it into `CurrentState`.
 
 ```text
-current_inventory.read(scope) -> CurrentState
+current_inventory.read(inventory_selection) -> CurrentState
 ```
 
-It scans entire selected Client Discovery Locations, not only desired paths. Scope is still limited to the active install level and selected clients.
+It scans entire selected Client Discovery Locations, not only desired paths. The selection is still limited to the active Install Level and selected Clients.
 
 Owns observable facts:
 
@@ -382,9 +404,9 @@ Owns observable facts:
 - broken symlinks
 - unexpected symlink target evidence
 - directory emptiness
-- global Managed State references needed for safe scoped prune
+- global Managed State references needed for safe selected-client prune
 
-It may read global Manifest state to answer safety questions such as whether a shared artifact still has requirements from other clients, but it returns a command-scoped `CurrentState` enriched with reference context.
+It may read global Manifest state to answer safety questions such as whether a shared artifact still has requirements from other clients, but it returns a `CurrentState` limited to the selected Install Level and Clients and enriched with reference context.
 
 It does not decide whether something is stale, removable, blocked, or a warning.
 
@@ -501,7 +523,7 @@ lock_plan = lock_planner.plan_for_preview(desired, existing_locks, refresh_sourc
 if lock_plan has fatal desired-state diagnostics:
   report and stop
 
-current = current_inventory.read(scope)
+current = current_inventory.read(inventory_selection)
 install_preview = reconciler.preview({ proposed_locked: lock_plan.proposed_locked, current })
 reporter.render_preview({ lock_plan, install_preview })
 ```
@@ -541,7 +563,7 @@ sequenceDiagram
     Desired-->>UseCase: DesiredState
     UseCase->>Lock: plan_for_apply(desired, existing locks, refresh?)
     Lock-->>UseCase: LockPlan
-    UseCase->>Inventory: read(scope)
+    UseCase->>Inventory: read(inventory_selection)
     Inventory-->>UseCase: CurrentState
     UseCase->>Reconciler: apply(ApplyInput)
     Reconciler-->>UseCase: ApplyPlan
@@ -558,7 +580,7 @@ lock_plan = lock_planner.plan_for_apply(desired, existing_locks, refresh_sources
 if lock_plan has fatal desired-state diagnostics:
   report and stop
 
-current = current_inventory.read(scope)
+current = current_inventory.read(inventory_selection)
 apply_plan = reconciler.apply({ proposed_locked: lock_plan.proposed_locked, current })
 
 if apply_plan has apply blockers:
@@ -583,7 +605,7 @@ existing_lock_state = lock_planner.existing_for_prune(desired, existing_locks)
 if existing_lock_state has fatal desired-state diagnostics:
   report and stop
 
-current = current_inventory.read(scope)
+current = current_inventory.read(inventory_selection)
 prune_plan = reconciler.prune({ locked: existing_lock_state.locked, current })
 result = executor.prune(prune_plan)
 reporter.render_prune({ existing_lock_state, prune_plan, result })
@@ -597,7 +619,7 @@ Prune may partially proceed. It removes safe stale state and skips unsafe stale 
 desired = desired_builder.build(...)
 existing_locks = lock_store.load_for(...)
 existing_lock_state = lock_planner.existing_for_status(desired, existing_locks)
-current = current_inventory.read(scope)
+current = current_inventory.read(inventory_selection)
 install_status = reconciler.status({ locked: existing_lock_state.locked, current })
 reporter.render_status({ existing_lock_state, install_status })
 ```
