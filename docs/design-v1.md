@@ -307,14 +307,14 @@ Command use cases compose lock planning, reconciliation, execution, and reportin
 LockPlan {
   proposed_locked: ProposedLockedDesiredState,
   lockfile_changes: Vec<LockfileChange>,
-  diagnostics: Vec<LockDiagnostic>,
-  fatal_diagnostics: Vec<FatalDesiredStateDiagnostic>,
+  diagnostics: Vec<LockPlanningDiagnostic>,
+  blocking_diagnostics: Vec<BlockingDesiredStateDiagnostic>,
 }
 
 ExistingLockState {
-  locked: LockedDesiredState,
-  diagnostics: Vec<LockDiagnostic>,
-  fatal_diagnostics: Vec<FatalDesiredStateDiagnostic>,
+  locked_desired: LockedDesiredState,
+  diagnostics: Vec<LockPlanningDiagnostic>,
+  blocking_diagnostics: Vec<BlockingDesiredStateDiagnostic>,
 }
 
 PreviewCommandPlan {
@@ -324,12 +324,27 @@ PreviewCommandPlan {
 
 ApplyCommandPlan {
   lockfile_changes: Vec<LockfileChange>,
-  apply_plan: ApplyPlan,
+  reconciler_plan: ApplyPlan,
+}
+
+CommandExecutionOutcome<T> {
+  BlockedBeforeExecution,
+  Executed(T),
+}
+
+ApplyCommandResult {
+  plan: ApplyCommandPlan,
+  outcome: CommandExecutionOutcome<ApplyExecutionResult>,
 }
 
 PruneCommandPlan {
   existing_lock_state: ExistingLockState,
-  prune_plan: PrunePlan,
+  reconciler_plan: PrunePlan,
+}
+
+PruneCommandResult {
+  plan: PruneCommandPlan,
+  outcome: CommandExecutionOutcome<PruneExecutionResult>,
 }
 
 StatusCommandReport {
@@ -338,7 +353,7 @@ StatusCommandReport {
 }
 ```
 
-`LockDiagnostic` includes non-fatal source-resolution and config/lock mismatch diagnostics. Fatal desired-state diagnostics stop before inventory/reconciliation.
+`LockPlanningDiagnostic` includes non-blocking source-resolution and config/lock mismatch diagnostics. Blocking desired-state diagnostics stop before inventory/reconciliation.
 
 ## Module Responsibilities
 
@@ -347,7 +362,7 @@ StatusCommandReport {
 Builds active config intent.
 
 ```text
-desired_builder.build(config_layers, install_level, client_filter) -> DesiredState
+desired_builder.build(&config_layers, install_level, clients) -> DesiredState
 ```
 
 Owns:
@@ -366,10 +381,10 @@ Does not inspect git/path source contents, read discovery locations, or decide i
 Derives locked state from config intent and existing lockfiles.
 
 ```text
-lock_planner.plan_for_preview(desired, existing_locks, refresh_sources) -> LockPlan
-lock_planner.plan_for_apply(desired, existing_locks, refresh_sources) -> LockPlan
-lock_planner.existing_for_status(desired, existing_locks) -> ExistingLockState
-lock_planner.existing_for_prune(desired, existing_locks) -> ExistingLockState
+lock_planner.build_preview_lock_plan(desired, existing_locks, refresh_sources) -> LockPlan
+lock_planner.build_apply_lock_plan(desired, existing_locks, refresh_sources) -> LockPlan
+lock_planner.build_status_lock_state(desired, existing_locks) -> ExistingLockState
+lock_planner.build_prune_lock_state(desired, existing_locks) -> ExistingLockState
 ```
 
 Owns:
@@ -435,17 +450,17 @@ ApplyInput {
 }
 
 PruneInput {
-  locked: LockedDesiredState,
+  locked_desired: LockedDesiredState,
   current: CurrentState,
 }
 
 StatusInput {
-  locked: LockedDesiredState,
+  locked_desired: LockedDesiredState,
   current: CurrentState,
 }
 ```
 
-The reconciler assumes locked desired state is internally coherent. Fatal desired-state errors such as resolved Discovery Name Collisions stop before inventory/reconciliation.
+The reconciler assumes locked desired state is internally coherent. Blocking desired-state errors such as resolved Discovery Name Collisions stop before inventory/reconciliation.
 
 Private classifiers are shared inside the module so command behavior does not drift:
 
@@ -470,8 +485,8 @@ Owns mutation ordering, private preflight, and last-mile filesystem safety.
 Public interface:
 
 ```text
-executor.apply(lockfile_changes, apply_plan) -> ApplyExecutionResult
-executor.prune(prune_plan) -> PruneExecutionResult
+executor.apply(lockfile_changes, plan) -> ApplyExecutionResult
+executor.prune(plan) -> PruneExecutionResult
 ```
 
 Preflight is private. Callers should not need to remember to preflight before execution.
@@ -516,11 +531,11 @@ These modules should return structured facts or perform narrow persistence opera
 
 ```text
 config_layers = config_loader.load_active_layers(...)
-desired = desired_builder.build(config_layers, install_level, clients)
-existing_locks = lock_store.load_for(config_layers)
-lock_plan = lock_planner.plan_for_preview(desired, existing_locks, refresh_sources)
+desired = desired_builder.build(&config_layers, install_level, clients)
+existing_locks = lock_store.load_for_config_layers(&config_layers)
+lock_plan = lock_planner.build_preview_lock_plan(desired, existing_locks, refresh_sources)
 
-if lock_plan has fatal desired-state diagnostics:
+if lock_plan has blocking desired-state diagnostics:
   report and stop
 
 current = current_inventory.read(inventory_selection)
@@ -545,7 +560,7 @@ Preview does not write config, lockfiles, Manifest, Managed State, Skill Sources
 
 `apply` recomputes source/lock planning at apply time. If sources changed since preview, apply uses the apply-time resolution. Future applies then use the persisted lock unless refresh is requested.
 
-This diagram shows the successful apply path. Fatal desired-state diagnostics stop before inventory. Apply blockers stop before executor mutation.
+This diagram shows the successful apply path. Blocking desired-state diagnostics stop before inventory. Apply blockers stop before executor mutation.
 
 ```mermaid
 sequenceDiagram
@@ -559,36 +574,43 @@ sequenceDiagram
     participant Reporter as reporter
 
     CLI->>UseCase: ApplyRequest
-    UseCase->>Desired: build(config layers, install level, clients)
+    UseCase->>Desired: build(&config layers, install level, clients)
     Desired-->>UseCase: DesiredState
-    UseCase->>Lock: plan_for_apply(desired, existing locks, refresh?)
+    UseCase->>Lock: build_apply_lock_plan(desired, existing locks, refresh?)
     Lock-->>UseCase: LockPlan
     UseCase->>Inventory: read(inventory_selection)
     Inventory-->>UseCase: CurrentState
     UseCase->>Reconciler: apply(ApplyInput)
     Reconciler-->>UseCase: ApplyPlan
-    UseCase->>Executor: apply(lockfile_changes, apply_plan)
+    UseCase->>Executor: apply(lockfile_changes, plan)
     Executor-->>UseCase: ApplyExecutionResult
-    UseCase->>Reporter: render apply result
+    UseCase->>Reporter: render ApplyCommandResult
 ```
 
 ```text
-desired = desired_builder.build(...)
-existing_locks = lock_store.load_for(...)
-lock_plan = lock_planner.plan_for_apply(desired, existing_locks, refresh_sources)
+config_layers = config_loader.load_active_layers(...)
+desired = desired_builder.build(&config_layers, install_level, clients)
+existing_locks = lock_store.load_for_config_layers(&config_layers)
+lock_plan = lock_planner.build_apply_lock_plan(desired, existing_locks, refresh_sources)
 
-if lock_plan has fatal desired-state diagnostics:
+if lock_plan has blocking desired-state diagnostics:
   report and stop
 
 current = current_inventory.read(inventory_selection)
-apply_plan = reconciler.apply({ proposed_locked: lock_plan.proposed_locked, current })
+reconciler_plan = reconciler.apply({ proposed_locked: lock_plan.proposed_locked, current })
 
-if apply_plan has apply blockers:
-  report full plan and blockers
+if reconciler_plan has apply blockers:
+  reporter.render_apply({
+    plan: { lockfile_changes: lock_plan.lockfile_changes, reconciler_plan },
+    outcome: BlockedBeforeExecution,
+  })
   exit 2
 
-result = executor.apply(lock_plan.lockfile_changes, apply_plan)
-reporter.render_apply({ lock_plan, apply_plan, result })
+execution = executor.apply(lock_plan.lockfile_changes, reconciler_plan)
+reporter.render_apply({
+  plan: { lockfile_changes: lock_plan.lockfile_changes, reconciler_plan },
+  outcome: Executed(execution),
+})
 ```
 
 Apply does not knowingly partially proceed. If semantic apply blockers exist, no mutation is attempted. If executor preflight fails, no mutation is attempted. Last-mile failures can still leave partial state; recovery is forward/idempotent through `status`, fixes, and rerun.
@@ -598,17 +620,21 @@ Apply never prunes. If stale state remains, apply reports the PRD warning to run
 ### Prune
 
 ```text
-desired = desired_builder.build(...)
-existing_locks = lock_store.load_for(...)
-existing_lock_state = lock_planner.existing_for_prune(desired, existing_locks)
+config_layers = config_loader.load_active_layers(...)
+desired = desired_builder.build(&config_layers, install_level, clients)
+existing_locks = lock_store.load_for_config_layers(&config_layers)
+existing_lock_state = lock_planner.build_prune_lock_state(desired, existing_locks)
 
-if existing_lock_state has fatal desired-state diagnostics:
+if existing_lock_state has blocking desired-state diagnostics:
   report and stop
 
 current = current_inventory.read(inventory_selection)
-prune_plan = reconciler.prune({ locked: existing_lock_state.locked, current })
-result = executor.prune(prune_plan)
-reporter.render_prune({ existing_lock_state, prune_plan, result })
+reconciler_plan = reconciler.prune({ locked_desired: existing_lock_state.locked_desired, current })
+execution = executor.prune(reconciler_plan)
+reporter.render_prune({
+  plan: { existing_lock_state, reconciler_plan },
+  outcome: Executed(execution),
+})
 ```
 
 Prune may partially proceed. It removes safe stale state and skips unsafe stale removals. If skips remain, exit `2` with recovery guidance.
@@ -616,11 +642,12 @@ Prune may partially proceed. It removes safe stale state and skips unsafe stale 
 ### Status
 
 ```text
-desired = desired_builder.build(...)
-existing_locks = lock_store.load_for(...)
-existing_lock_state = lock_planner.existing_for_status(desired, existing_locks)
+config_layers = config_loader.load_active_layers(...)
+desired = desired_builder.build(&config_layers, install_level, clients)
+existing_locks = lock_store.load_for_config_layers(&config_layers)
+existing_lock_state = lock_planner.build_status_lock_state(desired, existing_locks)
 current = current_inventory.read(inventory_selection)
-install_status = reconciler.status({ locked: existing_lock_state.locked, current })
+install_status = reconciler.status({ locked_desired: existing_lock_state.locked_desired, current })
 reporter.render_status({ existing_lock_state, install_status })
 ```
 

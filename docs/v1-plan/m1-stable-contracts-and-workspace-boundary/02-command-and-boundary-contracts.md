@@ -22,7 +22,10 @@ Define command request/result vocabulary and public seam function signatures wit
 - Add skeletal command output/result types:
   - `PreviewCommandPlan`
   - `ApplyCommandPlan`
+  - `ApplyCommandResult`
   - `PruneCommandPlan`
+  - `PruneCommandResult`
+  - `CommandExecutionOutcome`
   - `StatusCommandReport`
   - `DoctorReport`
 - Add public seam signatures for:
