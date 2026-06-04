@@ -23,8 +23,8 @@ Define normalized in-memory state aggregates passed between planning, inventory,
   - `LockPlan`
   - `ExistingLockState`
   - `LockfileChange`
-  - `LockDiagnostic`
-  - `FatalDesiredStateDiagnostic`
+  - `LockPlanningDiagnostic`
+  - `BlockingDesiredStateDiagnostic`
   - `PreviewReport`
   - `ApplyPlan`
   - `PrunePlan`
@@ -52,7 +52,7 @@ Define normalized in-memory state aggregates passed between planning, inventory,
 ## Acceptance Criteria
 
 - Module seams can exchange normalized state without referring to TOML schemas.
-- Desired, locked, proposed locked, and current state are distinct types.
+- Desired, locked desired, proposed locked, and current state are distinct types.
 - Artifact identity and Discovery Requirement identity are explicit enough to support the Manifest safety model later.
 
 ## Validation
