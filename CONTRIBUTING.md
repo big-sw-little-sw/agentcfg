@@ -58,7 +58,6 @@ Read before making non-trivial changes:
 ## Conventions
 
 - Use product terms from `CONTEXT.md` in CLI help, errors, and diagnostics.
-- Keep TOML field names stable (`scope`, `include`, `groups`, `skill_aliases`).
 - Include tests with behavior changes when practical.
 - Do not commit directly to protected branches (`no-commit-to-branch` is enabled in prek).
 
