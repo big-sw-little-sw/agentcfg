@@ -30,11 +30,11 @@ Define command request/result vocabulary and public seam function signatures wit
   - `DoctorReport`
 - Add public seam signatures for:
   - `workflow::{init, preview, apply, prune, status, doctor}`
-  - `desired_builder`
-  - `lock_planner`
-  - `current_inventory`
-  - `reconciler`
-  - `executor`
+  - `config`
+  - `resolution`
+  - `installation`
+  - `planning`
+  - `execution`
   - store and filesystem probe modules
 
 ## Implementation Notes
@@ -42,21 +42,21 @@ Define command request/result vocabulary and public seam function signatures wit
 - Public seam functions return `AgentcfgResult<_>`.
 - Stub bodies may use `unimplemented!("... is not implemented yet")` while they are not reachable from CLI execution.
 - Do not include milestone numbers in transient stub messages.
-- `doctor` stays structurally separate from `status`; it does not use lock planning or reconciliation.
+- `doctor` stays structurally separate from `status`; it does not use resolution, installation planning, or execution planning.
 - Reporter/output types should be skeletal containers with terse comments for later rendering work.
 
 ## Out Of Scope
 
 - Real source resolution.
-- Current-state inventory.
-- Reconciler classification logic.
-- Executor preflight or mutation.
+- Observed-installation collection.
+- Planning classification logic.
+- Execution preflight or mutation.
 - Terminal output wording.
 
 ## Acceptance Criteria
 
 - Later tasks can call the intended seams by name and type.
-- CLI wording and filesystem details do not leak into planner/reconciler/executor contracts.
+- CLI wording and filesystem details do not leak into config, resolution, planning, or execution contracts.
 - Stubbed workflow seams are not wired into normal CLI command execution.
 
 ## Validation

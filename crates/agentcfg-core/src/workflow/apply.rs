@@ -1,8 +1,8 @@
-//! Builds and executes Apply changes for locked desired install state.
+//! Builds and executes Apply changes for planned pinned configuration.
 
 use crate::{
-    AgentcfgResult, ClientSelection, InstallLevel, executor::ApplyExecutionResult,
-    lockfile::LockfileChange, reconciler::ApplyPlan,
+    AgentcfgResult, ClientSelection, InstallLevel, execution::ApplyResult,
+    lockfile::LockfileChanges, planning::ApplyPlan,
 };
 
 /// Command request for Apply.
@@ -16,15 +16,15 @@ pub struct ApplyRequest {
 /// Complete Apply command plan for execution and later rendering.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ApplyCommandPlan {
-    pub lockfile_changes: Vec<LockfileChange>,
-    pub reconciler_plan: ApplyPlan,
+    pub lockfile_changes: LockfileChanges,
+    pub apply_plan: ApplyPlan,
 }
 
 /// Complete Apply command result for later rendering.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApplyCommandResult {
     pub plan: ApplyCommandPlan,
-    pub outcome: super::CommandExecutionOutcome<ApplyExecutionResult>,
+    pub outcome: super::CommandExecutionOutcome<ApplyResult>,
 }
 
 pub fn run(_request: ApplyRequest) -> AgentcfgResult<ApplyCommandResult> {

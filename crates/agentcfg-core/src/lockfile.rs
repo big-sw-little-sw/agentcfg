@@ -2,8 +2,8 @@
 
 /// Lockfiles loaded for the active Config Layers.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ExistingLocks {}
+pub struct Lockfiles {}
 
-/// A planned persisted lockfile write.
+/// Planned persisted lockfile writes.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct LockfileChange {}
+pub struct LockfileChanges {}

@@ -1,8 +1,8 @@
 //! Builds read-only Preview results without mutating Managed State.
 
 use crate::{
-    AgentcfgResult, ClientSelection, InstallLevel, lock_planner::LockPlan,
-    reconciler::PreviewReport,
+    AgentcfgResult, ClientSelection, InstallLevel, planning::PreviewReport,
+    resolution::ResolutionPlan,
 };
 
 /// Command request for Preview.
@@ -16,8 +16,8 @@ pub struct PreviewRequest {
 /// Complete Preview command plan for later rendering.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PreviewCommandPlan {
-    pub lock_plan: LockPlan,
-    pub install_preview: PreviewReport,
+    pub resolution_plan: ResolutionPlan,
+    pub preview: PreviewReport,
 }
 
 pub fn run(_request: PreviewRequest) -> AgentcfgResult<PreviewCommandPlan> {

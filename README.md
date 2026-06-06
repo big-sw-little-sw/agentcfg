@@ -1,8 +1,8 @@
 # agentcfg
 
-`agentcfg` is a CLI concept for managing Agent Configuration as repeatable desired state, starting with skills.
+`agentcfg` is a CLI concept for managing Agent Configuration as repeatable pinned configuration and managed installation, starting with skills.
 
-It is intended to consume skills from filesystem or git **Skill Sources**, resolve them into **Locked Desired State** in **Managed State**, and place **Installed Artifacts** safely at **Client Discovery Locations** for the Project Level and User Level.
+It is intended to consume skills from filesystem or git **Skill Sources**, record the resolved **PinnedConfig** in lockfiles, materialize **Managed Skill Content** in **Managed State**, and place **Installed Artifacts** safely at **Client Discovery Locations** for the Project Level and User Level.
 
 ## Status
 
