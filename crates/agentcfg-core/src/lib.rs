@@ -30,7 +30,7 @@ pub enum AgentcfgError {}
 // Keep plain string domain wrappers consistent without repeating constructor/accessor glue.
 macro_rules! string_newtype {
     ($name:ident) => {
-        #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+        #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
 
@@ -76,8 +76,7 @@ impl fmt::Display for Client {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ClientSelection {
     AllSupported,
     Explicit(Vec<Client>),
