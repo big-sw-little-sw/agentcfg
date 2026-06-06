@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define persisted schema structs for Config Layer files, Lockfiles, and the Manifest without implementing parsing or persistence.
+Define persisted schema structs for ConfigDocs, Lockfiles, and the Manifest without implementing parsing or persistence.
 
 ## Read First
 
@@ -14,7 +14,7 @@ Define persisted schema structs for Config Layer files, Lockfiles, and the Manif
 
 - Add serde derives for persisted schema structs.
 - Use TOML kebab-case through serde renames.
-- Define Config Layer schema around the design-v1 shape:
+- Define the `ConfigDoc` schema around the design-v1 shape:
 
 ```toml
 config-layer = "user-project"
@@ -43,7 +43,7 @@ aliases = { review = "project-review" }
   - `DiscoveryRequirementRecord`
   - `ArtifactKey`
   - `RequirementKey`
-  - `LockedSkillRef`
+  - `PinnedSkillRef`
 
 ## Implementation Notes
 
@@ -52,7 +52,7 @@ aliases = { review = "project-review" }
 - Apply serde derives only to persisted schema structs and shared value types that cross persisted boundaries.
 - Omitted `include`, `groups`, and `aliases` default to empty.
 - Validation later enforces exactly one of `path` or `git`.
-- Lockfile structs should contain top-level containers and terse comments describing what lock planning fills in later.
+- Lockfile structs should contain top-level containers and terse comments describing what resolution fills in later.
 - Manifest uses list records rather than encoded TOML map keys in M1.
 - Manifest identity remains structured; do not make policy code depend on encoded key strings.
 

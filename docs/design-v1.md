@@ -2,39 +2,90 @@
 
 ## Thesis
 
-V1 uses a bounded reconciler architecture. The reconciler is a deep policy module that compares normalized locked desired state with normalized current state and returns command-specific plans or reports. It does not resolve Skill Sources, write files, or know lockfile persistence details.
+V1 uses the Option 2B responsibility-module architecture. Commands first build a
+`ConfigRequest`, then resolve that request into pinned configuration, observe the
+current installation, plan command-specific results, and execute approved writes.
 
-The design keeps generic infrastructure out of V1. V1 manages Skills. Future item kinds, such as Agents, can be added as typed resource groups above or beside Skills without turning the V1 reconciler into a generic resource graph.
+The design keeps generic infrastructure out of V1. V1 manages Skills. V2 can add
+Subagents through typed sibling submodules beside Skills without introducing a
+generic item trait, a generalized lifecycle engine, or shared lifecycle machinery
+before the second item kind proves what is actually common.
 
-The design is lightly inspired by `kubectl apply`'s declarative comparison of desired configuration with live state, while keeping pruning as an explicit separate command. It is also inspired by Cargo's lockfile model: resolve first, persist the lock, then perform work against that persisted resolution. References: [Kubernetes declarative object management](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/) and [cargo generate-lockfile](https://doc.rust-lang.org/cargo/commands/cargo-generate-lockfile.html).
+The design is lightly inspired by `kubectl apply`'s declarative comparison of
+requested configuration with live state, while keeping pruning as an explicit
+separate command. It is also inspired by Cargo's lockfile model: resolve first,
+persist the lock, then perform work against that persisted resolution.
+References: [Kubernetes declarative object management](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/)
+and [cargo generate-lockfile](https://doc.rust-lang.org/cargo/commands/cargo-generate-lockfile.html).
 
 Core split:
 
 | Module | Role |
 | --- | --- |
-| `desired_builder` | Compiles active config intent into `DesiredState`. |
-| `lock_planner` | Resolves `DesiredState` plus existing lockfiles into proposed or existing locked state. |
-| `current_inventory` | Normalizes filesystem, Manifest, Managed State, and discovery-location evidence into `CurrentState`. |
-| `reconciler` | Compares locked desired state with current state and returns command policy results. |
-| `executor` | Applies approved mutation plans to lockfiles, Managed State, discovery locations, and Manifest records. |
-| `reporter` | Renders structured command results as terminal output. |
+| `config/` | Parses active Config Layers and command options into `ConfigRequest`. |
+| `resolution/` | Resolves Skill Sources and lockfiles into normalized `PinnedConfig` meaning. |
+| `installation/` | Observes filesystem, Manifest, Managed State, and discovery-location facts as `ObservedInstallation`. |
+| `planning/` | Classifies observed facts against pinned configuration and produces command reports or mutation plans. |
+| `execution/` | Owns preflight, write ordering, and last-mile mutation safety. |
+| `workflow/` | Orchestrates command use cases without owning domain policy. |
+| `stores/` | Performs narrow persistence and external-source IO. |
+| `fs/` | Provides filesystem probes and low-level filesystem operations. |
+| `lockfile.rs` | Defines the persisted lockfile schema. |
+| `manifest.rs` | Defines the persisted Manifest schema. |
+| `client_registry.rs` | Defines supported Clients and Client Discovery Locations. |
+| `content_digest.rs` | Defines deterministic tree digest rules. |
 
-The diagram below shows the high-level data flow between those modules. It is a conceptual overview; command-specific details are covered in the command flow sections.
+The diagram below shows the high-level data flow between those modules. It is a
+conceptual overview; command-specific details are covered in the command flow
+sections.
 
 ```mermaid
 flowchart LR
-    Config["Config Layers"] --> Desired["desired_builder\nDesiredState"]
-    Desired --> Lock["lock_planner\nLockedDesiredState"]
-    Locks["Existing Lockfiles"] --> Lock
-    Manifest["Manifest + Managed State"] --> Inventory["current_inventory\nCurrentState"]
-    Discovery["Client Discovery Locations"] --> Inventory
-    Lock --> Reconciler["reconciler\npolicy plans/reports"]
-    Inventory --> Reconciler
-    Reconciler --> Executor["executor\nmutation + preflight"]
-    Lock --> Executor
-    Reconciler --> Reporter["reporter\nterminal output"]
-    Executor --> Reporter
+    ConfigLayers["Config Layers"] --> Config["config::build_request\nConfigRequest"]
+    Config --> Resolution["resolution\nPinnedConfig"]
+    Lockfiles["Existing Lockfiles"] --> Resolution
+    Manifest["Manifest + Managed State"] --> Installation["installation::observe\nObservedInstallation"]
+    Discovery["Client Discovery Locations"] --> Installation
+    Resolution --> Planning["planning\nplans/reports"]
+    Installation --> Planning
+    Planning --> Execution["execution\npreflight + writes"]
+    Resolution --> Execution
+    Planning --> Output["workflow result\nterminal rendering"]
+    Execution --> Output
 ```
+
+## Vocabulary
+
+Use the following internal state names in the V1 design and implementation:
+
+```text
+ConfigRequest
+PinnedConfig
+LockfilePinnedConfig(PinnedConfig)
+PlannedPinnedConfig(PinnedConfig)
+ObservedInstallation
+```
+
+Meanings:
+
+- `ConfigRequest`: normalized command-time request built from active Config
+  Layers plus command options. It includes Install Level, selected Clients,
+  Config Layer identity, and unresolved Skill Source selections.
+- `PinnedConfig`: normalized resolved configuration after Skill Source refs,
+  selected skills, groups, aliases, Discovery Names, content identities, and
+  Discovery Requirements are fixed.
+- `LockfilePinnedConfig(PinnedConfig)`: pinned configuration loaded from the
+  current lockfiles and normalized by `resolution/`.
+- `PlannedPinnedConfig(PinnedConfig)`: pinned configuration proposed by the
+  current operation. `preview` keeps it in memory; `apply` writes matching
+  lockfile changes before installing.
+- `ObservedInstallation`: observed install reality from the filesystem,
+  Manifest, Managed State, and Client Discovery Locations. It may drift from
+  pinned configuration because local files can be changed outside `agentcfg`.
+
+`lockfile.rs` owns persisted TOML shape. `resolution/` owns what a lockfile
+record means after it becomes `PinnedConfig`. Planning and execution never use
+lockfile schema types directly.
 
 ## Module Layout
 
@@ -49,54 +100,90 @@ crates/agentcfg-cli/src/
 
 crates/agentcfg-core/src/
   workflow/
+    mod.rs
     init.rs               command use case
-    preview.rs            command use case and command-plan composition
-    apply.rs              command use case and command-plan composition
-    prune.rs              command use case and command-plan composition
-    status.rs             command use case and command-report composition
-    doctor.rs             readiness diagnostics
+    preview.rs            command use case
+    apply.rs              command use case
+    prune.rs              command use case
+    status.rs             command use case
+    doctor.rs             readiness command use case
 
-  desired_builder.rs      config intent -> DesiredState
-  lock_planner.rs         DesiredState + locks -> locked/proposed locked state
-  current_inventory.rs    filesystem + Manifest evidence -> CurrentState
-  reconciler/
-    mod.rs                public command-shaped entrypoints
+  config/
+    mod.rs                config::build_request entrypoints
+    skills.rs             Skill Configuration request model
+
+  resolution/
+    mod.rs                public pin/load entrypoints
+    skills.rs             Skill Source resolution and pinned skill meaning
+
+  installation/
+    mod.rs                installation::observe entrypoint
+    skills.rs             observed skill artifacts and content facts
+
+  planning/
+    mod.rs                public command-shaped planning entrypoints
     classifiers.rs        private shared classification logic
     preview.rs            PreviewReport shaping
     apply.rs              ApplyPlan shaping
     prune.rs              PrunePlan shaping
     status.rs             StatusReport shaping
+    skills.rs             skill-specific planning rules
 
-  executor/
+  execution/
     mod.rs                public apply/prune execution interface
     apply.rs              apply preflight and write ordering
     prune.rs              prune preflight and removal ordering
+    skills.rs             skill materialization and discovery writes
 
-  state/
-    desired.rs            DesiredState and skill desired resources
-    locked.rs             LockedDesiredState and proposed locked resources
-    current.rs            CurrentState and normalized observations
-
-  manifest.rs             Manifest model
-  lockfile.rs             persisted lockfile model
-  config.rs               parsed config model
-  client_registry.rs      supported clients and discovery locations
-  content_digest.rs       deterministic tree digest
   stores/
     config_store.rs       config file reads/writes
     lock_store.rs         lockfile reads/writes
     manifest_store.rs     Manifest reads/writes
     managed_content.rs    content-addressed Managed Skill Content writes
     discovery_store.rs    discovery symlink operations
+
   fs/
     filesystem_probe.rs   path kind, symlink, writability, directory facts
+
+  lockfile.rs             persisted lockfile model
+  manifest.rs             Manifest model
+  client_registry.rs      supported clients and discovery locations
+  content_digest.rs       deterministic tree digest
 ```
 
-The layout is intentionally not one module per PRD noun. Modules exist where they hide policy, normalize evidence, preserve persistence ownership, or reduce caller burden.
+The layout is intentionally not one module per product noun. Modules exist where
+they hide policy, normalize evidence, preserve persistence ownership, or reduce
+caller burden.
+
+When Subagent Configuration is added after V1, add typed sibling modules such as
+`config/subagents.rs`, `resolution/subagents.rs`, `installation/subagents.rs`,
+`planning/subagents.rs`, and `execution/subagents.rs`. Do not add those files in
+V1 unless Subagent behavior is being implemented.
+
+### Subagent V2 Path
+
+Each responsibility module has typed item-specific siblings. V1 wires `skills.rs`.
+V2 may wire `subagents.rs` beside it:
+
+```text
+config/skills.rs        config/subagents.rs
+resolution/skills.rs    resolution/subagents.rs
+installation/skills.rs  installation/subagents.rs
+planning/skills.rs      planning/subagents.rs
+execution/skills.rs     execution/subagents.rs
+```
+
+The parent modules coordinate command-level aggregation only. Shared behavior
+must remain concrete until Skills and Subagents prove the same invariant needs
+one abstraction. Do not add a generic item trait, generic pinning trait, or
+generic planning trait in V1.
 
 ## CLI Layout
 
-V1 keeps the CLI thin. It parses flags into typed command requests, calls the matching `workflow` use case, renders the result, and maps it to an exit code. It does not perform orchestration, source resolution, reconciliation, or filesystem mutation directly.
+V1 keeps the CLI thin. It parses flags into typed command requests, calls the
+matching `workflow` use case, renders the result, and maps it to an exit code.
+It does not perform orchestration, source resolution, planning, or filesystem
+mutation directly.
 
 Command surface:
 
@@ -151,9 +238,12 @@ CLI flag rules:
 - `init --user` creates User Config.
 - Default `preview`, `apply`, `prune`, and `status` run at Project Level.
 - `--user` selects User Level for `preview`, `apply`, `prune`, and `status`.
-- `doctor` has no `--user` because it checks environment/config/tooling readiness rather than one install level.
+- `doctor` has no `--user` because it checks environment/config/tooling
+  readiness rather than one install level.
 - `--refresh-sources` is accepted only by `preview` and `apply`.
-- `--client <client>` may repeat and only narrows configured clients. It does not add clients outside configured selection unless config uses `clients = "all"`.
+- `--client <client>` may repeat and only narrows configured clients. It does
+  not add clients outside configured selection unless config uses
+  `clients = "all"`.
 
 Workflow mapping:
 
@@ -171,115 +261,129 @@ Output responsibilities:
 - `workflow` returns structured command reports/results.
 - `agentcfg-cli` renders terminal output from those structures.
 - Exit code mapping stays centralized in `exit_codes.rs`.
-- CLI help and diagnostics use PRD terms: Config Layer, Install Level, Skill Source, Client Discovery Location, Managed State, Manifest, Discovery Requirement, Installed Artifact, and Discovery Name Collision.
+- CLI help and diagnostics use PRD terms: Config Layer, Install Level, Skill
+  Source, Client Discovery Location, Managed State, Manifest, Discovery
+  Requirement, Installed Artifact, and Discovery Name Collision.
 
-## State Shapes
+## Data Shapes
 
 Use typed aggregate state, not optional future bags.
 
 ```text
-DesiredState {
-  skills: DesiredSkillResources,
+ConfigRequest {
+  install_level: Project | User,
+  clients: SelectedClients,
+  layers: Vec<ConfigLayerRequest>,
+  skills: config::skills::SkillConfigRequest,
 }
 
-CurrentState {
-  skills: CurrentSkillResources,
+PinnedConfig {
+  install_level: Project | User,
+  clients: SelectedClients,
+  skills: resolution::skills::PinnedSkills,
+}
+
+LockfilePinnedConfig(PinnedConfig)
+PlannedPinnedConfig(PinnedConfig)
+
+ObservedInstallation {
+  install_level: Project | User,
+  clients: SelectedClients,
+  skills: installation::skills::ObservedSkills,
+  manifest: ManifestSnapshot,
+  reference_context: InstallationReferenceContext,
 }
 ```
 
-If V2 adds Agents, extend the aggregate:
+If V2 adds Subagents, extend the aggregate explicitly:
 
 ```text
-DesiredState {
-  skills: DesiredSkillResources,
-  agents: DesiredAgentResources,
+ConfigRequest {
+  skills: config::skills::SkillConfigRequest,
+  subagents: config::subagents::SubagentConfigRequest,
+}
+
+PinnedConfig {
+  skills: resolution::skills::PinnedSkills,
+  subagents: resolution::subagents::PinnedSubagents,
+}
+
+ObservedInstallation {
+  skills: installation::skills::ObservedSkills,
+  subagents: installation::subagents::ObservedSubagents,
 }
 ```
 
-The reconciler may remain the command-level coordinator, but lifecycle policy should stay item-specific internally until multiple item kinds prove a shared abstraction.
+Do not model V2 by adding a map of generic item kind to opaque data. The typed
+sibling modules keep ownership clear and keep callers from handling downcasts,
+generic IDs, or policy switches.
 
-## Data Structure Concept Islands
+### Data Structure Concept Islands
 
-These diagrams split the main data structures by ownership. They are about data relationships, not exact function call order.
+These diagrams split the main data structures by ownership. They are about data
+relationships, not exact function call order.
 
-### Intent And Locking
+#### Config And Pinning
 
 ```mermaid
 flowchart LR
-    Config["Config Layers"] -- "compiled by" --> DesiredBuilder["desired_builder"]
-    DesiredBuilder -- "produces" --> Desired["DesiredState\nactive config intent"]
-    Desired -- "resolved by" --> LockPlanner["lock_planner"]
-    ExistingLocks["ExistingLocks\npersisted lockfiles"] -- "read by" --> LockPlanner
-    LockPlanner -- "preview/apply result" --> LockPlan["LockPlan"]
-    LockPlanner -- "status/prune result" --> ExistingLockState["ExistingLockState"]
-    LockPlan -- "contains" --> Proposed["ProposedLockedDesiredState"]
-    LockPlan -- "contains" --> LockChanges["LockfileChanges"]
-    ExistingLockState -- "contains" --> Locked["LockedDesiredState"]
+    ConfigLayers["Config Layers"] -- "compiled by" --> ConfigBuild["config::build_request"]
+    ConfigBuild -- "produces" --> Request["ConfigRequest\nactive command request"]
+    Request -- "resolved by" --> Resolution["resolution"]
+    Lockfiles["Lockfiles"] -- "read by" --> Resolution
+    Resolution -- "preview/apply result" --> Planned["PlannedPinnedConfig"]
+    Resolution -- "status/prune result" --> LockfilePinned["LockfilePinnedConfig"]
+    Resolution -- "also returns" --> LockChanges["LockfileChanges"]
 ```
 
-### Current-State Inventory
+#### Installation Observation
 
 ```mermaid
 flowchart LR
-    Manifest["ManifestSnapshot"] -- "observed by" --> Inventory["current_inventory"]
-    Managed["ManagedContentSnapshot"] -- "observed by" --> Inventory
-    Discovery["DiscoverySnapshot"] -- "observed by" --> Inventory
-    Inventory -- "normalizes evidence into" --> Current["CurrentState"]
+    Manifest["ManifestSnapshot"] -- "observed by" --> Observe["installation::observe"]
+    Managed["ManagedContentSnapshot"] -- "observed by" --> Observe
+    Discovery["DiscoverySnapshot"] -- "observed by" --> Observe
+    Observe -- "normalizes facts into" --> Observed["ObservedInstallation"]
 ```
 
-### Reconciliation Inputs And Outputs
+#### Planning Inputs And Outputs
 
 ```mermaid
 flowchart LR
-    Proposed["ProposedLockedDesiredState"] -- "planned intent" --> PreviewInput["PreviewInput"]
-    Proposed -- "planned intent" --> ApplyInput["ApplyInput"]
-    Locked["LockedDesiredState"] -- "existing intent" --> PruneInput["PruneInput"]
-    Locked -- "existing intent" --> StatusInput["StatusInput"]
-    Current["CurrentState"] -- "observed state" --> PreviewInput
-    Current -- "observed state" --> ApplyInput
-    Current -- "observed state" --> PruneInput
-    Current -- "observed state" --> StatusInput
+    Planned["PlannedPinnedConfig"] -- "target" --> PreviewInput["PreviewInput"]
+    Planned -- "target" --> ApplyInput["ApplyInput"]
+    LockfilePinned["LockfilePinnedConfig"] -- "current lockfile target" --> PruneInput["PruneInput"]
+    LockfilePinned -- "current lockfile target" --> StatusInput["StatusInput"]
+    Observed["ObservedInstallation"] -- "observed reality" --> PreviewInput
+    Observed -- "observed reality" --> ApplyInput
+    Observed -- "observed reality" --> PruneInput
+    Observed -- "observed reality" --> StatusInput
 
-    PreviewInput -- "classified by reconciler" --> PreviewReport["PreviewReport"]
-    ApplyInput -- "classified by reconciler" --> ApplyPlan["ApplyPlan"]
-    PruneInput -- "classified by reconciler" --> PrunePlan["PrunePlan"]
-    StatusInput -- "classified by reconciler" --> StatusReport["StatusReport"]
+    PreviewInput -- "classified by planning" --> PreviewReport["PreviewReport"]
+    ApplyInput -- "classified by planning" --> ApplyPlan["ApplyPlan"]
+    PruneInput -- "classified by planning" --> PrunePlan["PrunePlan"]
+    StatusInput -- "classified by planning" --> StatusReport["StatusReport"]
 ```
 
-### Execution And Manifest State
+#### Execution And Manifest State
 
 ```mermaid
 flowchart LR
-    LockChanges["LockfileChanges"] -- "written before install" --> Executor["executor"]
-    ApplyPlan["ApplyPlan"] -- "executed by" --> Executor
-    PrunePlan["PrunePlan"] -- "executed by" --> Executor
-    Executor -- "records physical artifact" --> Installed["InstalledArtifact"]
-    Executor -- "records ownership need" --> Requirement["DiscoveryRequirement"]
+    LockChanges["LockfileChanges"] -- "written before install" --> Execution["execution"]
+    ApplyPlan["ApplyPlan"] -- "executed by" --> Execution
+    PrunePlan["PrunePlan"] -- "executed by" --> Execution
+    Execution -- "records physical artifact" --> Installed["InstalledArtifact"]
+    Execution -- "records ownership need" --> Requirement["DiscoveryRequirement"]
     Installed -- "points at" --> Content["Managed Skill Content\nTreeDigest"]
     Requirement -- "requires" --> Installed
 ```
 
-## Desired And Locked State
-
-`DesiredState` is active config intent before Skill Source resolutions are fixed.
-
-`LockedDesiredState` is normalized desired install state derived from existing lockfiles. It is used by `status` and `prune`.
-
-`ProposedLockedDesiredState` is the in-memory locked outcome produced by `preview` and `apply` after source/lock planning. It may include missing lockfile creation or refreshed source resolutions. `preview` never persists it. `apply` recomputes it at apply time and persists lockfile changes before installing.
-
-The reconciler receives normalized locked install state, not lockfile schema.
-
-```text
-LockedDesiredState {
-  skills: LockedDesiredSkillResources,
-}
-```
-
-The normalized skill resources include desired Managed Skill Content, desired Installed Artifacts, and desired Discovery Requirements.
-
 ## Config File Shape
 
-Persisted Config Layer files use compact TOML field names where nesting already supplies the Skill Configuration context. These persisted names are part of the V1 design contract: `config-layer`, `include`, `groups`, and `aliases`.
+`ConfigDoc` is the parsed persisted schema for one Config Layer file. Persisted
+Config Layer files use compact TOML field names where nesting already supplies
+the Skill Configuration context. These persisted names are part of the V1 design
+contract: `config-layer`, `include`, `groups`, and `aliases`.
 
 Example:
 
@@ -295,36 +399,44 @@ groups = ["rust"]
 aliases = { review = "project-review" }
 ```
 
-`config-layer` stores a Persisted Config Layer Value: `shared-project`, `user-project`, or `user`. `include`, `groups`, and `aliases` are per-Skill Source fields. `aliases` stores Skill Alias rules from Source Skill Name to Discovery Name.
+`config-layer` stores a Persisted Config Layer Value: `shared-project`,
+`user-project`, or `user`. `include`, `groups`, and `aliases` are per-Skill
+Source fields. `aliases` stores Skill Alias rules from Source Skill Name to
+Discovery Name.
 
-Omitted `include`, `groups`, and `aliases` fields default to empty. `path` and `git` are mutually exclusive Skill Source locator fields; config validation enforces that exactly one is present.
+Omitted `include`, `groups`, and `aliases` fields default to empty. `path` and
+`git` are mutually exclusive Skill Source locator fields; config validation
+enforces that exactly one is present.
 
 ## Command Composition Types
 
-Command use cases compose lock planning, reconciliation, execution, and reporting through command-level types. These types keep lockfile/source diagnostics outside the reconciler while still giving reporters one coherent command result.
+Command use cases compose config request building, resolution, installation
+observation, planning, execution, and reporting through command-level types.
+These types keep source and lockfile diagnostics outside installation
+observation while still giving reporters one coherent command result.
 
 ```text
-LockPlan {
-  proposed_locked: ProposedLockedDesiredState,
-  lockfile_changes: Vec<LockfileChange>,
-  diagnostics: Vec<LockPlanningDiagnostic>,
-  blocking_diagnostics: Vec<BlockingDesiredStateDiagnostic>,
+ResolutionPlan {
+  planned_pinned: PlannedPinnedConfig,
+  lockfile_changes: LockfileChanges,
+  diagnostics: Vec<ResolutionDiagnostic>,
+  blocking_diagnostics: Vec<BlockingConfigRequestDiagnostic>,
 }
 
-ExistingLockState {
-  locked_desired: LockedDesiredState,
-  diagnostics: Vec<LockPlanningDiagnostic>,
-  blocking_diagnostics: Vec<BlockingDesiredStateDiagnostic>,
+LockfileConfigCheck {
+  lockfile_pinned: LockfilePinnedConfig,
+  diagnostics: Vec<ResolutionDiagnostic>,
+  blocking_diagnostics: Vec<BlockingConfigRequestDiagnostic>,
 }
 
 PreviewCommandPlan {
-  lock_plan: LockPlan,
-  install_preview: PreviewReport,
+  resolution_plan: ResolutionPlan,
+  preview: PreviewReport,
 }
 
 ApplyCommandPlan {
-  lockfile_changes: Vec<LockfileChange>,
-  reconciler_plan: ApplyPlan,
+  lockfile_changes: LockfileChanges,
+  apply_plan: ApplyPlan,
 }
 
 CommandExecutionOutcome<T> {
@@ -334,35 +446,42 @@ CommandExecutionOutcome<T> {
 
 ApplyCommandResult {
   plan: ApplyCommandPlan,
-  outcome: CommandExecutionOutcome<ApplyExecutionResult>,
+  outcome: CommandExecutionOutcome<ApplyResult>,
 }
 
 PruneCommandPlan {
-  existing_lock_state: ExistingLockState,
-  reconciler_plan: PrunePlan,
+  lockfile_check: LockfileConfigCheck,
+  prune_plan: PrunePlan,
 }
 
 PruneCommandResult {
   plan: PruneCommandPlan,
-  outcome: CommandExecutionOutcome<PruneExecutionResult>,
+  outcome: CommandExecutionOutcome<PruneResult>,
 }
 
 StatusCommandReport {
-  existing_lock_state: ExistingLockState,
-  install_status: StatusReport,
+  lockfile_check: LockfileConfigCheck,
+  status: StatusReport,
+}
+
+DoctorCommandReport {
+  readiness: DoctorReport,
 }
 ```
 
-`LockPlanningDiagnostic` includes non-blocking source-resolution and config/lock mismatch diagnostics. Blocking desired-state diagnostics stop before inventory/reconciliation.
+`ResolutionDiagnostic` includes source-resolution, lockfile-read, and
+config/lock mismatch evidence. Workflows keep these diagnostics alongside
+planning results so reporters can render command-specific warnings and blockers
+without making planning own source or lockfile policy.
 
 ## Module Responsibilities
 
-### `desired_builder`
+### `config/`
 
-Builds active config intent.
+Builds the command-time request from parsed config and CLI options.
 
 ```text
-desired_builder.build(&config_layers, install_level, clients) -> DesiredState
+config::build_request(config_docs, install_level, clients) -> ConfigRequest
 ```
 
 Owns:
@@ -370,21 +489,23 @@ Owns:
 - active Config Layer selection
 - Project Level vs User Level separation
 - `--client` narrowing
-- `clients = "all"` expansion
-- configured Skill Sources, selections, groups, and aliases
-- config-level collision checks knowable without resolving sources
+- `clients = "all"` expansion through `client_registry.rs`
+- persisted config schema validation that does not require source contents
+- Config Layer identity and path normalization
+- unresolved Skill Source locators, selections, groups, and aliases
 
-Does not inspect git/path source contents, read discovery locations, or decide install state.
+Does not inspect git/path source contents, read lockfile contents, read
+discovery locations, or classify install state.
 
-### `lock_planner`
+### `resolution/`
 
-Derives locked state from config intent and existing lockfiles.
+Converts `ConfigRequest` and lockfiles into normalized pinned configuration.
 
 ```text
-lock_planner.build_preview_lock_plan(desired, existing_locks, refresh_sources) -> LockPlan
-lock_planner.build_apply_lock_plan(desired, existing_locks, refresh_sources) -> LockPlan
-lock_planner.build_status_lock_state(desired, existing_locks) -> ExistingLockState
-lock_planner.build_prune_lock_state(desired, existing_locks) -> ExistingLockState
+resolution::build_preview_resolution_plan(request, lockfiles, refresh_sources) -> ResolutionPlan
+resolution::build_apply_resolution_plan(request, lockfiles, refresh_sources) -> ResolutionPlan
+resolution::check_status_lockfiles(request, lockfiles) -> LockfileConfigCheck
+resolution::check_prune_lockfiles(request, lockfiles) -> LockfileConfigCheck
 ```
 
 Owns:
@@ -393,21 +514,32 @@ Owns:
 - missing lockfile creation planning
 - `--refresh-sources`
 - path and git Skill Source resolution
+- Skill Source discovery
+- Skill Group expansion
+- Included Skill validation
+- Skill Alias application
+- Managed Skill Content preparation inputs
+- content digest calculation through `content_digest.rs`
+- normalized Discovery Requirement and Installed Artifact meaning
+- config/lock mismatch evidence
 - source-resolution diagnostics
-- config/lock mismatch diagnostics
-- resolved Discovery Name Collision detection after source resolution
 
-Does not read current install state or decide apply/prune policy.
+Does not read ObservedInstallation, classify blockers/skips, or decide
+apply/prune/status policy.
 
-### `current_inventory`
+`resolution/skills.rs` is the V1 owner for pinned skill meaning.
+`resolution/subagents.rs` is the reserved V2 sibling for pinned subagent meaning.
 
-Reads current evidence and normalizes it into `CurrentState`.
+### `installation/`
+
+Reads current evidence and normalizes it into `ObservedInstallation`.
 
 ```text
-current_inventory.read(inventory_selection) -> CurrentState
+installation::observe(selection) -> ObservedInstallation
 ```
 
-It scans entire selected Client Discovery Locations, not only desired paths. The selection is still limited to the active Install Level and selected Clients.
+It scans entire selected Client Discovery Locations, not only pinned paths. The
+selection is still limited to the active Install Level and selected Clients.
 
 Owns observable facts:
 
@@ -421,50 +553,53 @@ Owns observable facts:
 - directory emptiness
 - global Managed State references needed for safe selected-client prune
 
-It may read global Manifest state to answer safety questions such as whether a shared artifact still has requirements from other clients, but it returns a `CurrentState` limited to the selected Install Level and Clients and enriched with reference context.
+It may read global Manifest state to answer safety questions such as whether a
+shared artifact still has requirements from other clients, but it returns an
+`ObservedInstallation` limited to the selected Install Level and Clients and
+enriched with reference context.
 
 It does not decide whether something is stale, removable, blocked, or a warning.
 
-### `reconciler`
+### `planning/`
 
-Owns lifecycle policy and command-specific planning.
+Owns lifecycle policy, classification, and command-specific planning.
 
 ```text
-reconciler.preview(PreviewInput) -> PreviewReport
-reconciler.apply(ApplyInput) -> ApplyPlan
-reconciler.prune(PruneInput) -> PrunePlan
-reconciler.status(StatusInput) -> StatusReport
+planning::preview(PreviewInput) -> PreviewReport
+planning::apply(ApplyInput) -> ApplyPlan
+planning::prune(PruneInput) -> PrunePlan
+planning::status(StatusInput) -> StatusReport
 ```
 
 Inputs:
 
 ```text
 PreviewInput {
-  proposed_locked: ProposedLockedDesiredState,
-  current: CurrentState,
+  planned_pinned: PlannedPinnedConfig,
+  observed_installation: ObservedInstallation,
 }
 
 ApplyInput {
-  proposed_locked: ProposedLockedDesiredState,
-  current: CurrentState,
+  planned_pinned: PlannedPinnedConfig,
+  observed_installation: ObservedInstallation,
 }
 
 PruneInput {
-  locked_desired: LockedDesiredState,
-  current: CurrentState,
+  lockfile_pinned: LockfilePinnedConfig,
+  observed_installation: ObservedInstallation,
 }
 
 StatusInput {
-  locked_desired: LockedDesiredState,
-  current: CurrentState,
+  lockfile_pinned: LockfilePinnedConfig,
+  observed_installation: ObservedInstallation,
 }
 ```
 
-The reconciler assumes locked desired state is internally coherent. Blocking desired-state errors such as resolved Discovery Name Collisions stop before inventory/reconciliation.
+Private classifiers are shared inside the module so command behavior does not
+drift:
 
-Private classifiers are shared inside the module so command behavior does not drift:
-
-- missing desired artifacts
+- Discovery Name Collisions after pinning
+- missing pinned artifacts
 - artifact updates
 - stale Discovery Requirements
 - stale Installed Artifacts
@@ -472,24 +607,28 @@ Private classifiers are shared inside the module so command behavior does not dr
 - unexpected symlink targets
 - broken symlinks
 - unmanaged artifact conflicts
+- config/lock mismatch findings
 - apply blockers
 - prune skips
 - status health findings
+- doctor readiness findings
 
-Public outputs remain command-specific. Callers do not depend on private classifier types.
+Public outputs remain command-specific. Callers do not depend on private
+classifier types.
 
-### `executor`
+### `execution/`
 
 Owns mutation ordering, private preflight, and last-mile filesystem safety.
 
 Public interface:
 
 ```text
-executor.apply(lockfile_changes, plan) -> ApplyExecutionResult
-executor.prune(plan) -> PruneExecutionResult
+execution::apply(lockfile_changes, plan) -> ApplyResult
+execution::prune(plan) -> PruneResult
 ```
 
-Preflight is private. Callers should not need to remember to preflight before execution.
+Preflight is private. Callers should not need to remember to preflight before
+execution.
 
 `apply()` behavior:
 
@@ -507,40 +646,86 @@ Preflight is private. Callers should not need to remember to preflight before ex
 3. skip unsafe removals
 4. return structured skipped/failure diagnostics
 
-Executor knows the plan shape and safe write ordering. Low-level stores/adapters own filesystem, symlink, TOML, and Manifest persistence mechanics.
+Execution knows the plan shape and safe write ordering. Low-level stores and
+filesystem adapters own symlink, TOML, Manifest, and content persistence
+mechanics.
 
-### Stores And Helpers
+### `workflow/`
+
+Owns command orchestration only.
+
+Workflow modules:
+
+- load config and lockfiles through `stores/`
+- call `config::build_request`
+- call `resolution/` when the command needs pinned configuration
+- call `installation::observe` when the command needs installation facts
+- call `planning/`
+- call `execution/` for mutating commands
+- return structured command results to the CLI
+
+Workflow modules do not classify install findings, interpret lockfile schema, or
+perform filesystem writes directly.
+
+### Stores, Filesystem, And Helpers
 
 Shared low-level modules:
 
-- `client_registry`: supported clients and discovery locations
-- `filesystem_probe`: path kind, symlink, writability, directory emptiness
-- `lock_store`: lockfile load/write
-- `manifest_store`: Manifest load/write
-- `managed_content_store`: content-addressed Managed Skill Content writes
-- `discovery_store`: discovery symlink operations
-- `content_digest`: deterministic tree digest rules
+- `client_registry.rs`: supported clients and discovery locations
+- `content_digest.rs`: deterministic tree digest rules
+- `stores/config_store.rs`: config file reads/writes
+- `stores/lock_store.rs`: lockfile reads/writes
+- `stores/manifest_store.rs`: Manifest reads/writes
+- `stores/managed_content.rs`: content-addressed Managed Skill Content writes
+- `stores/discovery_store.rs`: discovery symlink operations
+- `stores/source_store.rs`: path/git Skill Source reads
+- `fs/probe.rs`: path kind, symlink, writability, directory emptiness
+- `fs/ops.rs`: narrow filesystem operations
 
-These modules should return structured facts or perform narrow persistence operations. They should not encode command policy.
+These modules should return structured facts or perform narrow persistence
+operations. They should not encode command policy.
 
 ## Command Flows
+
+All command flows enter the core through `workflow::*::run`. Commands that need
+active configuration use `config::build_request` to normalize command options
+and active ConfigDocs. Only commands that need pinned configuration call
+`resolution/`. Only commands that compare install reality call
+`installation::observe`. Apply and Prune call `execution/` only after planning.
+
+### Init
+
+`init` creates an empty Config Layer file. It does not resolve Skill Sources or
+observe Client Discovery Locations because no pinned configuration or install
+state exists yet.
+
+```text
+determine the ConfigDoc path for init.target_layer
+if that ConfigDoc path already exists:
+  report and stop
+
+stores::config_store.create_config_doc_file(init.target_layer)
+reporter.render_init(success)
+```
+
+Init refuses to overwrite an existing config file unless a later command design
+explicitly adds a safe overwrite mode.
 
 ### Preview
 
 `preview` is a read-only forecast, not a reserved transaction.
 
 ```text
-config_layers = config_loader.load_active_layers(...)
-desired = desired_builder.build(&config_layers, install_level, clients)
-existing_locks = lock_store.load_for_config_layers(&config_layers)
-lock_plan = lock_planner.build_preview_lock_plan(desired, existing_locks, refresh_sources)
-
-if lock_plan has blocking desired-state diagnostics:
-  report and stop
-
-current = current_inventory.read(inventory_selection)
-install_preview = reconciler.preview({ proposed_locked: lock_plan.proposed_locked, current })
-reporter.render_preview({ lock_plan, install_preview })
+config_docs = stores::config_store.load_active_config_docs(...)
+request = config::build_request(config_docs, preview.install_level, preview.clients)
+lockfiles = stores::lock_store.load_for_config_docs(config_docs)
+resolution_plan = resolution::build_preview_resolution_plan(request, lockfiles, refresh_sources)
+observed = installation::observe(selection)
+install_preview = planning::preview({
+  planned_pinned: resolution_plan.planned_pinned,
+  observed_installation: observed,
+})
+reporter.render_preview({ resolution_plan, install_preview })
 ```
 
 Preview shows:
@@ -554,115 +739,135 @@ Preview shows:
 - Discovery Name preparation
 - warnings for uncertain Client Discovery Locations
 
-Preview does not write config, lockfiles, Manifest, Managed State, Skill Sources, or discovery locations.
+Preview does not write config, lockfiles, Manifest, Managed State, Skill
+Sources, or discovery locations.
 
 ### Apply
 
-`apply` recomputes source/lock planning at apply time. If sources changed since preview, apply uses the apply-time resolution. Future applies then use the persisted lock unless refresh is requested.
+`apply` recomputes resolution at apply time. If sources changed since preview,
+apply uses the apply-time resolution. Future applies then use the persisted lock
+unless refresh is requested.
 
-This diagram shows the successful apply path. Blocking desired-state diagnostics stop before inventory. Apply blockers stop before executor mutation.
+This diagram shows the successful apply path. Planning blockers stop before
+execution mutation.
 
 ```mermaid
 sequenceDiagram
     participant CLI as cli
     participant UseCase as workflow::apply
-    participant Desired as desired_builder
-    participant Lock as lock_planner
-    participant Inventory as current_inventory
-    participant Reconciler as reconciler
-    participant Executor as executor
+    participant Config as config
+    participant Resolution as resolution
+    participant Installation as installation
+    participant Planning as planning
+    participant Execution as execution
     participant Reporter as reporter
 
     CLI->>UseCase: ApplyRequest
-    UseCase->>Desired: build(&config layers, install level, clients)
-    Desired-->>UseCase: DesiredState
-    UseCase->>Lock: build_apply_lock_plan(desired, existing locks, refresh?)
-    Lock-->>UseCase: LockPlan
-    UseCase->>Inventory: read(inventory_selection)
-    Inventory-->>UseCase: CurrentState
-    UseCase->>Reconciler: apply(ApplyInput)
-    Reconciler-->>UseCase: ApplyPlan
-    UseCase->>Executor: apply(lockfile_changes, plan)
-    Executor-->>UseCase: ApplyExecutionResult
+    UseCase->>Config: build_request(config docs, install level, clients)
+    Config-->>UseCase: ConfigRequest
+    UseCase->>Resolution: build_apply_resolution_plan(config request, lockfiles, refresh?)
+    Resolution-->>UseCase: ResolutionPlan
+    UseCase->>Installation: observe(selection)
+    Installation-->>UseCase: ObservedInstallation
+    UseCase->>Planning: apply(ApplyInput)
+    Planning-->>UseCase: ApplyPlan
+    UseCase->>Execution: apply(lockfile changes, plan)
+    Execution-->>UseCase: ApplyResult
     UseCase->>Reporter: render ApplyCommandResult
 ```
 
 ```text
-config_layers = config_loader.load_active_layers(...)
-desired = desired_builder.build(&config_layers, install_level, clients)
-existing_locks = lock_store.load_for_config_layers(&config_layers)
-lock_plan = lock_planner.build_apply_lock_plan(desired, existing_locks, refresh_sources)
+config_docs = stores::config_store.load_active_config_docs(...)
+request = config::build_request(config_docs, apply.install_level, apply.clients)
+lockfiles = stores::lock_store.load_for_config_docs(config_docs)
+resolution_plan = resolution::build_apply_resolution_plan(request, lockfiles, refresh_sources)
+observed = installation::observe(selection)
+install_plan = planning::apply({
+  planned_pinned: resolution_plan.planned_pinned,
+  observed_installation: observed,
+})
 
-if lock_plan has blocking desired-state diagnostics:
-  report and stop
-
-current = current_inventory.read(inventory_selection)
-reconciler_plan = reconciler.apply({ proposed_locked: lock_plan.proposed_locked, current })
-
-if reconciler_plan has apply blockers:
+if install_plan has apply blockers:
   reporter.render_apply({
-    plan: { lockfile_changes: lock_plan.lockfile_changes, reconciler_plan },
+    plan: { lockfile_changes: resolution_plan.lockfile_changes, install_plan },
     outcome: BlockedBeforeExecution,
   })
   exit 2
 
-execution = executor.apply(lock_plan.lockfile_changes, reconciler_plan)
+execution = execution::apply(resolution_plan.lockfile_changes, install_plan)
 reporter.render_apply({
-  plan: { lockfile_changes: lock_plan.lockfile_changes, reconciler_plan },
+  plan: { lockfile_changes: resolution_plan.lockfile_changes, install_plan },
   outcome: Executed(execution),
 })
 ```
 
-Apply does not knowingly partially proceed. If semantic apply blockers exist, no mutation is attempted. If executor preflight fails, no mutation is attempted. Last-mile failures can still leave partial state; recovery is forward/idempotent through `status`, fixes, and rerun.
+Apply does not knowingly partially proceed. If planning reports semantic apply
+blockers, no mutation is attempted. If execution preflight fails, no mutation is
+attempted. Last-mile failures can still leave partial state; recovery is
+forward/idempotent through `status`, fixes, and rerun.
 
-Apply never prunes. If stale state remains, apply reports the PRD warning to run `agentcfg prune`.
+Apply never prunes. If stale state remains, apply reports the PRD warning to run
+`agentcfg prune`.
 
 ### Prune
 
 ```text
-config_layers = config_loader.load_active_layers(...)
-desired = desired_builder.build(&config_layers, install_level, clients)
-existing_locks = lock_store.load_for_config_layers(&config_layers)
-existing_lock_state = lock_planner.build_prune_lock_state(desired, existing_locks)
-
-if existing_lock_state has blocking desired-state diagnostics:
-  report and stop
-
-current = current_inventory.read(inventory_selection)
-reconciler_plan = reconciler.prune({ locked_desired: existing_lock_state.locked_desired, current })
-execution = executor.prune(reconciler_plan)
+config_docs = stores::config_store.load_active_config_docs(...)
+request = config::build_request(config_docs, prune.install_level, prune.clients)
+lockfiles = stores::lock_store.load_for_config_docs(config_docs)
+lockfile_check = resolution::check_prune_lockfiles(request, lockfiles)
+observed = installation::observe(selection)
+prune_plan = planning::prune({
+  lockfile_pinned: lockfile_check.lockfile_pinned,
+  observed_installation: observed,
+})
+execution = execution::prune(prune_plan)
 reporter.render_prune({
-  plan: { existing_lock_state, reconciler_plan },
+  plan: { lockfile_check, prune_plan },
   outcome: Executed(execution),
 })
 ```
 
-Prune may partially proceed. It removes safe stale state and skips unsafe stale removals. If skips remain, exit `2` with recovery guidance.
+Prune may partially proceed. It removes safe stale state and skips unsafe stale
+removals. If skips remain, exit `2` with recovery guidance.
 
 ### Status
 
 ```text
-config_layers = config_loader.load_active_layers(...)
-desired = desired_builder.build(&config_layers, install_level, clients)
-existing_locks = lock_store.load_for_config_layers(&config_layers)
-existing_lock_state = lock_planner.build_status_lock_state(desired, existing_locks)
-current = current_inventory.read(inventory_selection)
-install_status = reconciler.status({ locked_desired: existing_lock_state.locked_desired, current })
-reporter.render_status({ existing_lock_state, install_status })
+config_docs = stores::config_store.load_active_config_docs(...)
+request = config::build_request(config_docs, status.install_level, status.clients)
+lockfiles = stores::lock_store.load_for_config_docs(config_docs)
+lockfile_check = resolution::check_status_lockfiles(request, lockfiles)
+observed = installation::observe(selection)
+install_status = planning::status({
+  lockfile_pinned: lockfile_check.lockfile_pinned,
+  observed_installation: observed,
+})
+reporter.render_status({ lockfile_check, install_status })
 ```
 
 Status answers two related questions:
 
-- Does current managed install state match `LockedDesiredState`?
-- Does the existing locked state still represent active config, or is there config/lock mismatch?
+- Does ObservedInstallation match `LockfilePinnedConfig`?
+- Does the existing pinned configuration still represent active config, or is
+  there config/lock mismatch?
 
-Config/lock mismatch is reported at command/report level from `ExistingLockState`, outside the reconciler.
+Config/lock mismatch evidence comes from `resolution/`. Status classification
+and wording come from `planning/`.
 
 ### Doctor
 
-Doctor does not perform lock planning by default and does not call the reconciler.
+Doctor checks readiness. It is read-only and does not replace `status` for
+install-state consistency.
 
-It checks readiness:
+```text
+load available ConfigDocs and local environment evidence
+readiness_inputs = { config_docs, client_registry evidence, filesystem probes }
+readiness = workflow::doctor readiness checks
+reporter.render_doctor({ readiness })
+```
+
+Doctor checks:
 
 - git availability
 - Project Root detection
@@ -673,16 +878,20 @@ It checks readiness:
 - optional source/network checks when requested or configured
 - unmanaged artifacts only when they block known readiness paths
 
-Doctor reuses shared evidence modules where useful, but it does not compare current install state to locked desired state.
+Doctor does not write lockfiles, Manifest, Managed State, Skill Sources, or
+discovery locations. It does not call `execution/`.
 
 ## Preview And Reporting Terms
 
 Use precise command-impact terms.
 
-- **Apply blockers**: conditions that prevent `apply` from executing any planned mutations.
-- **Prune skips**: stale removals that `prune` will skip while continuing with other safe removals.
+- **Apply blockers**: conditions that prevent `apply` from executing any
+  planned mutations.
+- **Prune skips**: stale removals that `prune` will skip while continuing with
+  other safe removals.
 - **Status findings**: install-state consistency facts.
-- **Config/lock mismatch**: active config asks for source/selection/client intent that existing lockfiles do not represent.
+- **Config/lock mismatch**: active config asks for source/selection/client
+  intent that existing lockfiles do not represent.
 
 Partial and blocked outcomes must include structured recovery diagnostics:
 
@@ -699,10 +908,38 @@ Refusal {
 Exit codes:
 
 - `0`: full success
-- `1`: fatal command/config/environment error before meaningful planning or execution
-- `2`: command completed or planned, but convergence/cleanup was blocked or skipped
+- `1`: fatal command/config/environment error before meaningful planning or
+  execution
+- `2`: command completed or planned, but convergence/cleanup was blocked or
+  skipped
 
-Document exit codes in user-facing command docs. Keep code comments centralized at exit-code mapping.
+Document exit codes in user-facing command docs. Keep code comments centralized
+at exit-code mapping.
+
+## Lockfile Model
+
+`lockfile.rs` owns the persisted lockfile schema only. It defines TOML-facing
+records, field names, versioning, and parse/serialize behavior.
+
+`resolution/` owns conversion between lockfile records and `PinnedConfig`.
+Callers outside `resolution/` should not make decisions from raw lockfile
+records.
+
+Lockfile responsibilities:
+
+- preserve stable persisted field names
+- preserve lockfile versioning and migration hooks
+- represent source pins for path and git Skill Sources
+- represent selected Source Skill Names, Discovery Names, prepared content
+  identities, and source provenance required for repeatability
+- avoid duplicating Manifest ownership state
+
+Lockfile non-responsibilities:
+
+- no filesystem observation
+- no stale artifact classification
+- no write ordering
+- no command reporting policy
 
 ## Manifest Model
 
@@ -725,7 +962,9 @@ ArtifactKey {
 }
 ```
 
-`ArtifactKey` excludes client, Config Layer, and digest. Multiple clients and layers can require the same physical artifact. Digest is artifact state; a changed digest means update the artifact.
+`ArtifactKey` excludes client, Config Layer, and digest. Multiple clients and
+layers can require the same physical artifact. Digest is artifact state; a
+changed digest means update the artifact.
 
 Requirement identity is who requires the artifact:
 
@@ -753,21 +992,23 @@ DiscoveryRequirement {
   key: RequirementKey,
   artifact_key: ArtifactKey,
   required_digest: TreeDigest,
-  locked_skill_ref: LockedSkillRef,
+  pinned_skill_ref: PinnedSkillRef,
 }
 ```
 
-`DiscoveryRequirement` stores minimal provenance for reporting only. It does not duplicate source URL/path/git ref resolution from lockfiles.
+`DiscoveryRequirement` stores minimal provenance for reporting only. It does not
+duplicate source URL/path/git ref resolution from lockfiles.
 
 ```text
-LockedSkillRef {
+PinnedSkillRef {
   config_source_id,
   source_skill_name,
   discovery_name,
 }
 ```
 
-Prune removes stale Discovery Requirements first. It removes an Installed Artifact only when no Discovery Requirements remain for its `ArtifactKey`.
+Prune removes stale Discovery Requirements first. It removes an Installed
+Artifact only when no Discovery Requirements remain for its `ArtifactKey`.
 
 ## Managed Skill Content
 
@@ -778,15 +1019,23 @@ Managed State/content/skills/sha256/2a/2a56c8...fed/
 Client Discovery Location/review -> Managed State/content/skills/sha256/2a/2a56c8...fed/
 ```
 
-Prepared content includes alias/frontmatter preparation. If preparation changes bytes, it naturally produces a different digest.
+Prepared content includes alias/frontmatter preparation. If preparation changes
+bytes, it naturally produces a different digest.
 
-Discovery artifacts are symlinks to content-addressed Managed Skill Content. Copy mode is not a first-class V1 install mode unless a client/platform forces it later.
+Discovery artifacts are symlinks to content-addressed Managed Skill Content.
+Copy mode is not a first-class V1 install mode unless a client/platform forces
+it later.
 
-Content addressing deduplicates within one Managed State root. V1 does not deduplicate project-level Managed Skill Content across different projects or between project and user Managed State roots.
+Content addressing deduplicates within one Managed State root. V1 does not
+deduplicate project-level Managed Skill Content across different projects or
+between project and user Managed State roots.
 
 ## Successful State Example
 
-This example uses placeholders for Managed State roots. The exact Managed State path is a persistence contract to define alongside implementation; the important shape is that Client Discovery Locations point to content-addressed Managed Skill Content.
+This example uses placeholders for Managed State roots. The exact Managed State
+path is a persistence contract to define alongside implementation; the important
+shape is that Client Discovery Locations point to content-addressed Managed
+Skill Content.
 
 Project-level state after `agentcfg apply`:
 
@@ -846,7 +1095,10 @@ ${XDG_CONFIG_HOME:-~/.config}/agentcfg/
             ...
 ```
 
-Shared portable discovery paths can produce multiple Discovery Requirements for one Installed Artifact. For example, Codex, Pi, OpenCode, and Cursor may all require `.agents/skills/review`, but the physical artifact is one symlink keyed by its discovery location and Discovery Name.
+Shared portable discovery paths can produce multiple Discovery Requirements for
+one Installed Artifact. For example, Codex, Pi, OpenCode, and Cursor may all
+require `.agents/skills/review`, but the physical artifact is one symlink keyed
+by its discovery location and Discovery Name.
 
 Compact Manifest excerpt for the project-level `review` example:
 
@@ -859,17 +1111,17 @@ digest = "sha256:2a56c8...fed"
 [discovery_requirements."SharedProject:project:Codex:.agents/skills:review"]
 artifact_key = "project:.agents/skills:review"
 required_digest = "sha256:2a56c8...fed"
-locked_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
+pinned_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
 
 [discovery_requirements."SharedProject:project:Cursor:.agents/skills:review"]
 artifact_key = "project:.agents/skills:review"
 required_digest = "sha256:2a56c8...fed"
-locked_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
+pinned_skill_ref = { config_source_id = "team-skills", source_skill_name = "review", discovery_name = "review" }
 ```
 
 ## Content Digest
 
-`content_digest` owns deterministic tree digest rules.
+`content_digest.rs` owns deterministic tree digest rules.
 
 ```text
 TreeDigest {
@@ -895,10 +1147,10 @@ Canonical digest excludes:
 
 Used by:
 
-- source/lock planning to identify locked content
+- `resolution/` to identify pinned content
 - materialization verification
-- inventory recovery checks
-- executor recovery before recording ownership
+- `installation/` recovery checks
+- `execution/` recovery before recording ownership
 - tests
 
 It does not know about Skills, Manifest, or command policy.
@@ -925,26 +1177,36 @@ User influence happens before rerun through:
 Safety ownership:
 
 ```text
-current_inventory:
+installation::observe:
   observes filesystem facts
 
-reconciler:
+planning:
   classifies semantic blockers, skips, removability, and status findings
 
-executor:
+execution:
   preflights write readiness and revalidates immediately before mutation
+
+lockfile.rs:
+  owns persisted lockfile schema
+
+resolution:
+  owns normalized pinned meaning
 ```
 
 Examples:
 
-- unmanaged artifact at desired path: apply blocker
+- unmanaged artifact at requested path: apply blocker
 - unexpected symlink target on stale artifact: prune skip
 - broken symlink: status finding; apply may replace only if ownership is clear
-- directory deletion: allowed only when stale, manifest-owned, unreferenced, and empty
+- directory deletion: allowed only when stale, manifest-owned, unreferenced, and
+  empty
 
-If an artifact creation succeeds but Manifest update fails, rerun `apply` may record Manifest ownership only when the existing artifact exactly matches the current `ApplyPlan`:
+If an artifact creation succeeds but Manifest update fails, rerun `apply` may
+record Manifest ownership only when the existing artifact exactly matches the
+current `ApplyPlan`:
 
-- symlink target equals expected content-addressed Managed Skill Content path, or copied content digest matches if copy mode exists
+- symlink target equals expected content-addressed Managed Skill Content path,
+  or copied content digest matches if copy mode exists
 - Managed Skill Content digest equals expected `TreeDigest`
 - expected digest comes from the current plan
 
@@ -952,12 +1214,15 @@ This is interrupted-write recovery, not general unmanaged adoption.
 
 ## Design Guardrails
 
-- Do not build a generic resource graph engine.
-- Do not parameterize the reconciler by Configured Item kind.
-- Do not expose internal resource IDs as public contracts.
+- Do not add a generic item trait for V1.
+- Do not add a generic lifecycle engine for V1.
+- Do not expose internal item IDs as public contracts.
 - Do not make `ApplyPlan` an executable filesystem script.
-- Do not put source resolution or lockfile mechanics in the reconciler.
-- Do not put lifecycle policy in the executor.
-- Do not duplicate filesystem probing between preview/apply/status/doctor; share evidence modules.
-- Do not treat unmanaged artifacts as managed resources.
-- Do not make every PRD noun a module. Modules must protect invariants, reduce caller burden, or improve locality.
+- Do not put source resolution or lockfile mechanics in `planning/`.
+- Do not put lifecycle policy in `execution/`.
+- Do not put persisted lockfile interpretation outside `resolution/`.
+- Do not duplicate filesystem probing between preview/apply/status/doctor;
+  share evidence modules.
+- Do not treat unmanaged artifacts as managed artifacts.
+- Do not make every product noun a module. Modules must protect invariants,
+  reduce caller burden, or improve locality.

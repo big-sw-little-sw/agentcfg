@@ -1,8 +1,8 @@
-//! Reports consistency of the current managed install state.
+//! Reports consistency between LockfilePinnedConfig and ObservedInstallation.
 
 use crate::{
-    AgentcfgResult, ClientSelection, InstallLevel, lock_planner::ExistingLockState,
-    reconciler::StatusReport,
+    AgentcfgResult, ClientSelection, InstallLevel, planning::StatusReport,
+    resolution::LockfileConfigCheck,
 };
 
 /// Command request for Status.
@@ -15,8 +15,8 @@ pub struct StatusRequest {
 /// Complete Status report for later terminal rendering.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct StatusCommandReport {
-    pub existing_lock_state: ExistingLockState,
-    pub install_status: StatusReport,
+    pub lockfile_check: LockfileConfigCheck,
+    pub status: StatusReport,
 }
 
 pub fn run(_request: StatusRequest) -> AgentcfgResult<StatusCommandReport> {

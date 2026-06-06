@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to `agentcfg`. This is a Rust workspace that manages Agent Configuration as repeatable desired state.
+Thanks for contributing to `agentcfg`. This is a Rust workspace that manages Agent Configuration as repeatable pinned configuration.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ The `prek` command skips only the branch-protection hook so validation can run o
 | Crate | Role |
 | --- | --- |
 | `crates/agentcfg-cli` | CLI parsing, output, exit codes |
-| `crates/agentcfg-core` | Config, paths, desired state, workflows, discovery |
+| `crates/agentcfg-core` | Config, resolution, installation observation, workflows, discovery |
 
 Read before making non-trivial changes:
 

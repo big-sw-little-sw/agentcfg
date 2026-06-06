@@ -2,14 +2,14 @@
 
 use crate::{
     AgentcfgResult,
-    config::ConfigLayer,
-    lockfile::{ExistingLocks, LockfileChange},
+    config::LoadedConfigDoc,
+    lockfile::{LockfileChanges, Lockfiles},
 };
 
-pub fn load_for_config_layers(_config_layers: &[ConfigLayer]) -> AgentcfgResult<ExistingLocks> {
+pub fn load_for_config_docs(_config_docs: &[LoadedConfigDoc]) -> AgentcfgResult<Lockfiles> {
     unimplemented!("lockfile loading is not implemented yet")
 }
 
-pub fn write_lockfile_changes(_changes: Vec<LockfileChange>) -> AgentcfgResult<()> {
+pub fn write_lockfile_changes(_changes: LockfileChanges) -> AgentcfgResult<()> {
     unimplemented!("lockfile writing is not implemented yet")
 }

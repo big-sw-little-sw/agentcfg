@@ -1,11 +1,13 @@
 //! Prune execution ordering and private safety checks.
 
-use crate::{AgentcfgResult, reconciler::PrunePlan};
+use crate::{AgentcfgResult, planning::PrunePlan};
 
 /// Result of an attempted Prune execution.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct PruneExecutionResult {}
+pub struct PruneResult {
+    pub skills: super::skills::SkillPruneResult,
+}
 
-pub(crate) fn execute(_plan: PrunePlan) -> AgentcfgResult<PruneExecutionResult> {
+pub(crate) fn execute(_plan: PrunePlan) -> AgentcfgResult<PruneResult> {
     unimplemented!("prune execution is not implemented yet")
 }

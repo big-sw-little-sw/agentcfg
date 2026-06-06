@@ -1,13 +1,13 @@
 # Agent Configuration Management
 
-Agent Configuration Management defines how agent-facing configuration becomes repeatable, managed install state. V1 is limited to skill configuration; later versions may add other Configured Item kinds.
+Agent Configuration Management defines how agent-facing configuration becomes a repeatable, managed installation. V1 is limited to Skill Configuration. Future subagent support should be added as another Configured Item kind with its own configuration vocabulary, not by changing Skill Configuration V1.
 
 ## Language
 
 ### Agent Configuration and Skills
 
 **Agent Configuration**:
-User-authored intent for which **Configured Items** should be available. V1 includes **Skill Configuration** only.
+User-authored intent for which **Configured Items** should be available. V1 includes **Skill Configuration** only. Future versions may add **Subagent Configuration** as another Configured Item kind.
 _Avoid_: agent config, settings
 
 **Skill Configuration**:
@@ -15,7 +15,7 @@ The part of **Agent Configuration** that declares which skills should be availab
 _Avoid_: skill setup, skill install config
 
 **Configured Item**:
-One kind of agent-facing thing managed by `agentcfg`. V1 has one Configured Item kind: **Skill**.
+One kind of agent-facing thing managed by `agentcfg`. V1 has one Configured Item kind: **Skill**. Future subagent support belongs here as a separate Configured Item kind.
 _Avoid_: resource, object, config item
 
 **Agent Skill Format**:
@@ -31,7 +31,7 @@ A filesystem path or git location that contains one or more **Skills** available
 _Avoid_: Source, repository, source tree
 
 **Managed Skill Content**:
-The `agentcfg`-owned skill files prepared from Locked Desired State and stored in Managed State. Managed Skill Content is derived from a **Skill Source** and may differ from the Skill Source content when `agentcfg` needs to prepare the **Discovery Name**.
+The `agentcfg`-owned skill files prepared from a **PinnedConfig** and stored in Managed State. Managed Skill Content is derived from a **Skill Source** and may differ from the Skill Source content when `agentcfg` needs to prepare the **Discovery Name**.
 _Avoid_: Managed Skill Copy, Managed Skill Instance, Managed Source Tree, source tree, skill cache
 
 **Source Skill Name**:
@@ -93,11 +93,11 @@ A requirement from a **Config Layer** that a configured item be discoverable by 
 _Avoid_: Consumer, Artifact Claim, Install Requirement, owner, reference
 
 **Stale Discovery Requirement**:
-A Discovery Requirement recorded in the **Manifest** that is no longer present in Desired State.
+A Discovery Requirement recorded in the **Manifest** that is no longer present in the **PinnedConfig** being reconciled.
 _Avoid_: stale consumer, stale claim, unmet requirement
 
 **Unsatisfied Discovery Requirement**:
-A Discovery Requirement in Desired State that does not currently have a valid Installed Artifact.
+A Discovery Requirement in the **PinnedConfig** being reconciled that does not have a valid Installed Artifact in the **ObservedInstallation**.
 _Avoid_: stale requirement, missing install
 
 **Stale Installed Artifact**:
@@ -112,18 +112,42 @@ _Avoid_: unexpected target, wrong target
 An Installed Artifact symlink whose destination does not exist.
 _Avoid_: broken target, missing target
 
-### Desired State and Resolution
+### Configuration Resolution and Installation
 
-**Desired State**:
-The outcome active Config Layers ask `agentcfg` to make true, before Skill Source resolutions are fixed.
-_Avoid_: wanted state, intended state
+**ConfigDoc**:
+The parsed persisted configuration schema for one **Config Layer**. A ConfigDoc is not yet normalized for command options or Skill Source resolution.
+_Avoid_: config model, parsed config
 
-**Locked Desired State**:
-Desired State after Skill Source resolutions are fixed so Apply can repeat the same result.
-_Avoid_: locked state, resolved state
+**ConfigRequest**:
+The normalized command-time request built from active **ConfigDocs** and command options, including Install Level and client selection. A ConfigRequest is not repeatable until Skill Source references, selections, aliases, and content identities are fixed.
+_Avoid_: Desired State, wanted state, active config intent
+
+**PinnedConfig**:
+A **ConfigRequest** after **Skill Source** refs, **Skill Selections**, **Skill Aliases**, **Discovery Names**, and content identities are fixed. PinnedConfig is the repeatable configuration used for installation and consistency checks.
+_Avoid_: Desired State, Locked Desired State, resolved state
+
+**LockfilePinnedConfig**:
+A **PinnedConfig** loaded from current **Lockfiles**.
+_Avoid_: Locked Desired State, locked state
+
+**PlannedPinnedConfig**:
+A **PinnedConfig** proposed by Preview or Apply resolution. Preview keeps it in memory; Apply persists corresponding lockfile changes before installation.
+_Avoid_: proposed locked state, preview plan
+
+**ObservedInstallation**:
+Observed install reality from the filesystem, **Manifest**, **Managed State**, and **Client Discovery Locations**. ObservedInstallation may drift from **LockfilePinnedConfig** when files are changed manually, become broken, or have not been pruned.
+_Avoid_: Current State, current state
+
+**ApplyPlan**:
+The concrete install mutation plan derived by comparing a **PlannedPinnedConfig** with an **ObservedInstallation**.
+_Avoid_: apply script, filesystem script
+
+**ApplyResult**:
+The outcome of executing an **ApplyPlan**, including completed changes, blockers, failures, and recovery diagnostics.
+_Avoid_: result log
 
 **Lockfile**:
-A user-visible file that records Locked Desired State for Configured Items that need repeatable Skill Source resolution.
+A user-visible file that records **PinnedConfig** for Configured Items that need repeatable Skill Source resolution.
 _Avoid_: lock, resolved state file
 
 **Manifest**:
@@ -131,7 +155,7 @@ An `agentcfg`-owned record in Managed State that records Installed Artifacts and
 _Avoid_: ownership file, state file
 
 **Source Refresh**:
-The workflow option that refreshes Skill Source resolutions before producing Locked Desired State.
+The workflow option that refreshes Skill Source resolutions before producing a **PlannedPinnedConfig**.
 _Avoid_: upgrade, update
 
 ### Layers and Levels
@@ -187,11 +211,11 @@ _Avoid_: persisted scope value, scope, TOML scope
 ### Workflows
 
 **Preview**:
-A read-only workflow that shows what **Apply** would change for the active configuration. Preview never writes config, lockfiles, manifests, Managed State, Skill Sources, or Client Discovery Locations.
+A read-only workflow that shows what **Apply** would change for the active **ConfigRequest**. Preview never writes config, lockfiles, manifests, Managed State, Skill Sources, or Client Discovery Locations.
 _Avoid_: plan, dry run
 
 **Apply**:
-A one-way workflow that applies Locked Desired State from active configuration into Managed State and Client Discovery Locations. Apply never writes changes back to Skill Sources.
+A one-way workflow that resolves active configuration to a **PlannedPinnedConfig**, persists required lockfile changes, and installs it into Managed State and Client Discovery Locations. Apply never writes changes back to Skill Sources.
 _Avoid_: sync, two-way sync, source update, bidirectional sync
 
 **Prune**:
@@ -199,7 +223,7 @@ A workflow that removes stale Managed State only when `agentcfg` can prove it is
 _Avoid_: clean, delete, uninstall
 
 **Status**:
-A workflow that reports whether the current managed install state is consistent for an Install Level.
+A workflow that reports whether **ObservedInstallation** is consistent with the **LockfilePinnedConfig** for an Install Level.
 _Avoid_: diagnose, inspect
 
 **Doctor**:
@@ -230,16 +254,25 @@ Resolved as command-specific CLI syntax, not a domain term. For `init`, it selec
 Resolved as misleading for the apply workflow because it suggests two-way synchronization. Use **Apply** for the one-way workflow from active configuration to Managed State and Client Discovery Locations.
 
 **Plan**:
-Resolved as misleading for the read-only workflow. Use **Preview** for the workflow that shows what Apply would change without writing.
+Resolved as misleading for the read-only workflow. Use **Preview** for the workflow that shows what Apply would change without writing. Use **ApplyPlan** only for the concrete apply mutation plan after resolution and reconciliation.
+
+**Desired State**:
+Superseded. Use **ConfigRequest** before pinning, **PinnedConfig** after pinning, or **PlannedPinnedConfig** / **LockfilePinnedConfig** when command source matters.
+
+**Locked Desired State**:
+Superseded. Use **PinnedConfig**, **PlannedPinnedConfig**, or **LockfilePinnedConfig**.
+
+**Current State**:
+Superseded. Use **ObservedInstallation**.
 
 **Upgrade**:
-Resolved as misleading for Skill Source resolution refresh. Use **Source Refresh** for the option that refreshes Skill Source resolutions before producing Locked Desired State; the CLI flag should be `--refresh-sources`.
+Resolved as misleading for Skill Source resolution refresh. Use **Source Refresh** for the option that refreshes Skill Source resolutions before producing a **PlannedPinnedConfig**; the CLI flag should be `--refresh-sources`.
 
 ## Example Dialogue
 
 Dev: "Does V1 manage all Agent Configuration?"
 
-Domain expert: "No. V1 manages Skill Configuration. Other Agent Configuration items may be added later."
+Domain expert: "No. V1 manages Skill Configuration. Subagent Configuration may be added later as another Configured Item kind."
 
 Dev: "Which meaning of `--user` is active?"
 

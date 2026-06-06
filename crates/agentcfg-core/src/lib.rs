@@ -1,17 +1,15 @@
-//! Core contracts and workflow modules for managing Agent Configuration desired state.
+//! Core contracts and workflow modules for managing repeatable Agent Configuration.
 
 pub mod client_registry;
 pub mod config;
 pub mod content_digest;
-pub mod current_inventory;
-pub mod desired_builder;
-pub mod executor;
+pub mod execution;
 pub mod fs;
-pub mod lock_planner;
+pub mod installation;
 pub mod lockfile;
 pub mod manifest;
-pub mod reconciler;
-pub mod state;
+pub mod planning;
+pub mod resolution;
 pub mod stores;
 pub mod workflow;
 

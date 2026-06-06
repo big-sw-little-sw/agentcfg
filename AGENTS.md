@@ -1,6 +1,6 @@
 # Agent instructions
 
-`agentcfg` manages Agent Configuration as repeatable desired state. This file is stable policy for coding agents.
+`agentcfg` manages Agent Configuration as repeatable pinned configuration. This file is stable policy for coding agents.
 
 ## Read first
 
