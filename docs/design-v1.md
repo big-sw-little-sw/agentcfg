@@ -388,6 +388,7 @@ contract: `config-layer`, `include`, `groups`, and `aliases`.
 Example:
 
 ```toml
+version = 1
 config-layer = "user-project"
 clients = ["codex", "cursor"]
 
@@ -407,6 +408,10 @@ Discovery Name.
 Omitted `include`, `groups`, and `aliases` fields default to empty. `path` and
 `git` are mutually exclusive Skill Source locator fields; config validation
 enforces that exactly one is present.
+
+All persisted root documents use a top-level `version = 1` schema field:
+ConfigDocs, Lockfiles, and the Manifest. Migration behavior is owned by the
+stores that parse those files, not by normalized workflow contracts.
 
 ## Command Composition Types
 
@@ -919,7 +924,7 @@ at exit-code mapping.
 ## Lockfile Model
 
 `lockfile.rs` owns the persisted lockfile schema only. It defines TOML-facing
-records, field names, versioning, and parse/serialize behavior.
+records, field names, the lockfile root `version`, and parse/serialize behavior.
 
 `resolution/` owns conversion between lockfile records and `PinnedConfig`.
 Callers outside `resolution/` should not make decisions from raw lockfile
@@ -928,7 +933,7 @@ records.
 Lockfile responsibilities:
 
 - preserve stable persisted field names
-- preserve lockfile versioning and migration hooks
+- preserve the lockfile root `version` and migration hooks
 - represent source pins for path and git Skill Sources
 - represent selected Source Skill Names, Discovery Names, prepared content
   identities, and source provenance required for repeatability
