@@ -1,0 +1,11 @@
+[package]
+name = "agentcfg-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "agentcfg_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }

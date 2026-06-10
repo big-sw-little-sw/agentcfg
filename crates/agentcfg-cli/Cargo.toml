@@ -1,0 +1,13 @@
+[package]
+name = "agentcfg-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "agentcfg"
+path = "src/main.rs"
+
+[dependencies]
+agentcfg-core = { path = "../agentcfg-core" }
+clap = { workspace = true }
+serde_json = { workspace = true }

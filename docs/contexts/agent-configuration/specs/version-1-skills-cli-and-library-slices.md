@@ -6,7 +6,7 @@
 
 These slices implement the V1 Skills CLI and library as tracer bullets. Each slice should be independently demoable or verifiable, with tests included in the slice rather than deferred.
 
-## 1. Config Show Tracer
+## 1. Config Show Tracer [done]
 
 **Type:** AFK
 

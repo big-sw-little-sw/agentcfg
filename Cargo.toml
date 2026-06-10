@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/agentcfg-core", "crates/agentcfg-cli"]
+resolver = "2"
+
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
