@@ -1,8 +1,6 @@
 # Agent Configuration Management
 
-Agent Configuration Management defines how agent-facing configuration becomes a repeatable, managed installation. The current implementation scope is Skill Configuration. Future configured item kinds should add their own configuration vocabulary without changing the shared installation and ownership language.
-
-`agentcfg` derives ownership from lockfiles, deterministic managed paths, Client Search Locations, binding artifact shape, and symlink targets.
+Agent Configuration Management defines how agent-facing configuration becomes a repeatable, managed installation. This document defines shared vocabulary; V1-specific schema, validation, and workflow rules belong in the relevant context specs.
 
 ## Language
 
@@ -15,6 +13,22 @@ _Avoid_: agent config, settings
 **Skill Configuration**:
 The currently implemented part of **Agent Configuration** that declares which skills should be available to which **Clients**.
 _Avoid_: skill setup, skill install config
+
+**Skill Configuration Entry**:
+A persisted entry in one **Config Layer** that selects **Skills** from one **Skill Source** and declares or inherits which **Clients** should receive derived **Client Bindings** for those selected Skills.
+_Avoid_: per-client skill entry, duplicate client entry
+
+**Default Client Selection**:
+A Config Layer-level client selection inherited by configured item entries that do not declare entry-level clients.
+_Avoid_: default agents, implicit clients
+
+**Agent Configuration File**:
+A user-authored `agentcfg.toml` file that stores one **Config Layer**.
+_Avoid_: config file when the specific artifact matters
+
+**Agent Configuration Lockfile**:
+A user-visible `agentcfg.lock` file that records repeatable **PinnedConfig** for Configured Items that need source resolution.
+_Avoid_: lock when the specific artifact matters
 
 **Configured Item**:
 One kind of agent-facing thing managed by `agentcfg`. The current configured item kind is **Skill**. Future configured item kinds belong here with their own configuration vocabulary.
@@ -29,23 +43,31 @@ A **Configured Item** in the **Agent Skill Format** that a **Client** can load a
 _Avoid_: plugin, capability, tool
 
 **Skill Source**:
-A filesystem path or git location that contains one or more **Skills** available for selection.
+A filesystem path, local git repository, GitHub shorthand, or full git URL that contains one or more **Skills** available for selection.
 _Avoid_: Source, repository, source tree
 
+**Git Source Ref**:
+A git revision configured on a git-backed **Skill Source**, such as a branch, tag, commit SHA, label that resolves to a git ref, or other ref accepted by git. Git Source Refs are supported for local git repositories, GitHub shorthand sources, and full git URLs.
+_Avoid_: version, label when the value is specifically a git ref
+
+**Content Hash**:
+An algorithm-qualified hash, such as `sha256:<tree-hash>`, that identifies resolved non-git local filesystem source content. Content Hash is the authoritative content identity for non-git local filesystem Skill Sources.
+_Avoid_: checksum when referring to source identity
+
 **Source Enumeration**:
-The item-kind-specific process that lists available configured items from a source before selection and **Source Resolution**. Current skill support enumerates Source Skill Names and Skill Groups from a Skill Source.
+The item-kind-specific process that lists available configured items from a source before selection and **Source Resolution**. Current skill support enumerates Source Skill Names from a Skill Source.
 _Avoid_: source discovery, discover skills
 
 **Source Resolution**:
-The item-kind-specific process that fixes source references, content identities, and other repeatability inputs before producing a **PinnedConfig**. Current skill support resolves Skill Source refs and skill content identities.
+The item-kind-specific process that fixes source references, **Git Source Refs**, content identities, and other repeatability inputs before producing a **PinnedConfig**. Current skill support resolves Skill Source refs, Git Source Refs, and skill content identities.
 _Avoid_: source discovery, source lookup
 
 **Managed Skill Tree**:
-An `agentcfg`-owned skill directory prepared from a **PinnedConfig** and stored in **Managed State**. A Managed Skill Tree is derived from a **Skill Source** and may differ from the Skill Source content when `agentcfg` needs item-wide preparation for the **Configured Item Name**.
+An `agentcfg`-owned skill directory prepared from a **PinnedConfig** and stored in **Managed State**. A Managed Skill Tree is derived from a **Skill Source** and may differ from source content when item-wide preparation is needed for the **Configured Item Name**.
 _Avoid_: Managed Skill Content, Managed Skill Copy, Managed Skill Instance, Managed Source Tree, source tree, skill cache
 
 **Source Skill Name**:
-The name of a **Skill** as it appears in a **Skill Source**.
+The source-declared name of a **Skill** as it appears in a **Skill Source**, before any **Skill Alias** is applied.
 _Avoid_: original name, source name
 
 **Configured Item Name**:
@@ -57,21 +79,21 @@ A Config Layer rule that changes the **Configured Item Name** for a selected **S
 _Avoid_: alias, rename, rewrite
 
 **Skill Selection**:
-The resulting set of **Skills** chosen from a **Skill Source** by a **Config Layer**, whether chosen explicitly, through Skill Groups, or by selecting every enumerated Skill in that Skill Source.
+The resulting set of **Skills** chosen from a **Skill Source** by a **Config Layer**, after **Excluded Skills** are removed.
 _Avoid_: selection, selected skills
 
 **Included Skill**:
 A **Skill** explicitly chosen by Source Skill Name from a **Skill Source**.
 _Avoid_: include, include entry
 
-**Skill Group**:
-A named set of Source Skill Names defined by a Skill Source that can be selected together.
-_Avoid_: group, category, bundle
+**Excluded Skill**:
+A **Skill** removed from a broad **Skill Selection**.
+_Avoid_: skip, ignore, blacklist
 
 ### Clients, Search, and Safety
 
 **Client**:
-An agent application or CLI that loads **Configured Items** from **Client Search Locations**. Supported Clients currently include Codex, Pi, OpenCode, Claude Code, Cline, and Cursor.
+An agent application or CLI that loads **Configured Items** from **Client Search Locations**.
 _Avoid_: agent, app, consumer
 
 **Client Search Location**:
@@ -82,20 +104,28 @@ _Avoid_: Client Target, Client Install Location, Client Config Install Location,
 `agentcfg`-owned filesystem state used to apply, inspect, and prune configuration safely. Managed State stores managed item-kind artifacts; current skill support stores Managed Skill Trees.
 _Avoid_: cache, generated state, internal state
 
+**Project Managed State**:
+Managed State stored at `.agentcfg/state` under the **Project Root**. Project Managed State is preferred for Project Level workflows.
+_Avoid_: project cache, project generated state
+
+**User Managed State**:
+Managed State stored under `$XDG_STATE_HOME/agentcfg`, or `$HOME/.local/state/agentcfg` when `XDG_STATE_HOME` is not set. User Managed State is used for User Level workflows.
+_Avoid_: global cache, home cache, user cache
+
 **Client Adapter Catalog**:
 The built-in catalog of supported **Clients**, the configured item kinds they can load, their **Client Search Locations**, and the artifact shapes their adapters use at each **Install Level**.
 _Avoid_: Client Discovery Registry, client target registry, target registry, registry
 
 **Client Binding**:
-The planned relationship that makes one configured item available to one **Client** at one **Install Level**, usually under its **Configured Item Name** and at one **Client Search Location**. A Client Binding is derived during configuration resolution and may be recorded as part of a **PinnedConfig**, but it is not a separate ownership record.
+The planned relationship that makes one configured item available to one **Client** at one **Install Level**, usually under its **Configured Item Name** and at one **Client Search Location**.
 _Avoid_: Client Exposure, Consumer, Artifact Claim, Install Requirement, owner, reference
 
 **Client Binding Artifact**:
-A filesystem entry at a **Client Search Location** that realizes a **Client Binding**. The artifact shape is determined by the configured item kind and Client. Current skill support may realize a binding with a symlink under the **Configured Item Name**.
+A filesystem entry at a **Client Search Location** that realizes a **Client Binding**. The artifact shape is determined by the configured item kind and Client.
 _Avoid_: Installed Artifact, target artifact, installed target, client target
 
 **Client Adaptation**:
-A client-specific content or layout change needed before a **Client** can load a configured item, such as frontmatter rewriting or client-specific file layout. Client Adaptation is not used for item-wide configuration changes such as **Skill Aliases**.
+A client-specific content or layout change needed before a **Client** can load a configured item, such as client-specific file layout. Client Adaptation is not used for item-wide configuration changes such as **Skill Aliases**.
 _Avoid_: alias, rename, global adaptation
 
 **Managed Artifact**:
@@ -157,29 +187,41 @@ A user-visible file that records **PinnedConfig** for Configured Items that need
 _Avoid_: lock, resolved state file
 
 **Source Refresh**:
-The workflow option that reruns **Source Resolution** before producing a **PlannedPinnedConfig**. Current skill support refreshes Source Resolution for Skill Sources.
+The workflow option that reruns **Source Resolution** before producing a **PlannedPinnedConfig**.
 _Avoid_: upgrade, update
+
+**Diagnostic**:
+A structured workflow message with a stable code, human-readable message, and contextual data.
+_Avoid_: log line, error string
+
+**Suggested Action**:
+A structured next step attached to a workflow result or Diagnostic, such as a command to run and the reason it helps. Suggested Actions are never executed automatically.
+_Avoid_: hint text, help prose
+
+**Progress Event**:
+A structured workflow event for major work phases, such as resolving external sources, planning, writing Agent Configuration Files or Agent Configuration Lockfiles, preparing Managed State, writing Client Binding Artifacts, pruning, and running Doctor checks.
+_Avoid_: verbose log, trace event
 
 ### Layers and Levels
 
 **Config Layer**:
-One user-authored configuration layer. V1 has three Config Layers: **Shared Project Config**, **User Project Config**, and **User Config**.
+One user-authored configuration layer.
 _Avoid_: config scope, layer scope
 
 **Active Config Layers**:
-The Config Layers selected for a workflow. Project-level workflows use Shared Project Config then User Project Config; user-level workflows use User Config.
+The Config Layers selected for a workflow.
 _Avoid_: active scopes, selected layers
 
 **Shared Project Config**:
-A Config Layer for Agent Configuration intentionally shared by everyone working in one Project. At the Project Level, Shared Project Config is active alongside User Project Config.
+A Config Layer for Agent Configuration intentionally shared by everyone working in one Project. At the Project Level, Shared Project Config is active alongside User Project Config. Its Agent Configuration File is `agentcfg.toml` at the **Project Root**.
 _Avoid_: project config, shared scope
 
 **User Project Config**:
-A Config Layer for one User's additions in one Project. At the Project Level, User Project Config is active alongside Shared Project Config.
+A Config Layer for one User's additions in one Project. At the Project Level, User Project Config is active alongside Shared Project Config. Its Agent Configuration File is `.agentcfg/agentcfg.toml` under the **Project Root**.
 _Avoid_: local project config, personal project config, user project scope
 
 **User Config**:
-A Config Layer for one User's Agent Configuration across Projects. At the User Level, User Config is the only active Config Layer.
+A Config Layer for one User's Agent Configuration across Projects. At the User Level, User Config is the only active Config Layer. Its Agent Configuration File is `$XDG_CONFIG_HOME/agentcfg/agentcfg.toml`, or `$HOME/.config/agentcfg/agentcfg.toml` when `XDG_CONFIG_HOME` is not set.
 _Avoid_: global config, home config, user scope
 
 **User**:
@@ -206,22 +248,22 @@ _Avoid_: project scope
 The Install Level that applies User Config to user-level Client Search Locations.
 _Avoid_: user scope
 
-**Persisted Config Layer Value**:
-The string stored in the persisted `config-layer` field to identify what kind of Config Layer a file is. V1 Persisted Config Layer Values are `shared-project`, `user-project`, and `user`.
-_Avoid_: persisted scope value, scope, TOML scope
-
 ### Workflows
 
-**Add**:
-A workflow that adds a configured item to a **Config Layer** and then may run **Install** to materialize the updated configuration.
-_Avoid_: add install, include
+**Select Skill**:
+A workflow that adds a **Skill** to **Skill Selection** in a **Config Layer**.
+_Avoid_: add skill, install skill
 
-**Remove**:
-A workflow that removes a configured item from a **Config Layer** and then may run **Install** or **Prune** to update managed artifacts.
-_Avoid_: uninstall, delete
+**Deselect Skill**:
+A workflow that removes a **Skill** from **Skill Selection** in a **Config Layer**.
+_Avoid_: remove skill, uninstall skill, delete skill
+
+**Config Show**:
+A read-only workflow that reports authored Agent Configuration for one or more **Config Layers**, with findings kept separate by Config Layer. Config Show does not read lockfiles or perform Source Resolution.
+_Avoid_: status, doctor, install preview
 
 **Preview**:
-A read-only workflow that shows what **Install** would change for the active **ConfigRequest**. Preview never writes config, lockfiles, Managed State, item sources, or Client Search Locations.
+A read-only workflow that shows what **Install** would change for a selected **Install Level**. Preview never writes config, lockfiles, Managed State, item sources, or Client Search Locations.
 _Avoid_: plan, dry run
 
 **Install**:
@@ -233,9 +275,9 @@ A workflow that applies **Conservative Prune** to remove Stale Managed Artifacts
 _Avoid_: clean, delete, uninstall
 
 **Status**:
-A workflow that reports whether **ObservedInstallation** is consistent with the **LockfilePinnedConfig** for an Install Level.
+A workflow that reports whether **ObservedInstallation** is consistent with **LockfilePinnedConfig** for one or more **Install Levels**, with findings kept separate by Install Level.
 _Avoid_: diagnose, inspect
 
 **Doctor**:
-A workflow that reports whether the local environment and configuration are capable of working.
+A workflow that reports whether the local environment and configuration are capable of working, with findings kept separate by Install Level when multiple levels are inspected.
 _Avoid_: status, inspect
