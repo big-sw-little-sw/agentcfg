@@ -7,8 +7,8 @@ use crate::config_doc::PersistedClientSelection;
 use crate::config_doc::{read_default_clients, write_default_clients, ConfigDocError};
 use crate::locations::{active_config_layers, layer_label, layer_relative_path_label};
 use crate::{
-    ConfigLayerId, Diagnostic, InstallLevel, SuggestedAction, UserConfigPathError, WorkflowContext,
-    WorkflowResult, WorkflowStatus,
+    project_anchor_blocker, ConfigLayerId, Diagnostic, InstallLevel, SuggestedAction,
+    UserConfigPathError, WorkflowContext, WorkflowResult, WorkflowStatus,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +195,12 @@ fn mutate_default_clients(
             );
         }
     };
+
+    if install_level == InstallLevel::Project {
+        if let Some(blocker) = project_anchor_blocker(&context) {
+            return blocked_result(workflow, install_level, &context, layer, vec![blocker]);
+        }
+    }
 
     let path = match context.config_layer_path(layer) {
         Ok(path) => path,

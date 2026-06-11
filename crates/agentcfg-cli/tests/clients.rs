@@ -35,6 +35,7 @@ fn clients_show_reports_project_layers_as_text() {
 #[test]
 fn clients_set_defaults_to_user_project_config() {
     let project_root = test_project("cli-set-default-layer");
+    std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
 
     let output = agentcfg()
         .args(["clients", "set", "codex"])
@@ -50,6 +51,7 @@ fn clients_set_defaults_to_user_project_config() {
 #[test]
 fn clients_set_writes_shared_project_config_with_flag() {
     let project_root = test_project("cli-set-shared");
+    std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
 
     let output = agentcfg()
         .args(["clients", "set", "pi", "--config-layer", "shared-project"])
@@ -90,9 +92,12 @@ fn clients_show_supports_user_level_with_flag() {
 
 #[test]
 fn clients_set_rejects_unknown_client_with_nonzero_exit() {
+    let project_root = test_project("cli-unknown-client");
+    std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
+
     let output = agentcfg()
         .args(["clients", "set", "not-a-client"])
-        .current_dir(test_project("cli-unknown-client"))
+        .current_dir(&project_root)
         .output()
         .expect("run agentcfg");
 

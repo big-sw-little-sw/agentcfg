@@ -34,7 +34,7 @@ Create the minimal Rust Cargo workspace with Core Crate and CLI Crate boundaries
 
 None - can start immediately.
 
-## 2. Config Layers And Default Clients
+## 2. Config Layers And Default Clients [done]
 
 **Type:** AFK
 
@@ -61,13 +61,12 @@ Make Config Layer and Install Level location resolution real, then add Default C
 - Core tests for location resolution, active layer selection, Config Layer ownership, and known Client name validation.
 - CLI tests for `clients show/set/add/remove`, `--level`, `--config-layer`, text/JSON output, and exit codes.
 - Mutation tests verify no Managed Artifact writes happen.
-- Deferred to slice 2.5: anchored Project Root discovery, `--project-root`, mutation blocking in unanchored directories, and `init`.
 
 ### Blocked by
 
 - Slice 1.
 
-## 2.5. Project Root Discovery And Init
+## 2.5. Project Root Discovery And Init [done]
 
 **Type:** AFK
 

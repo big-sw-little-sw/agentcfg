@@ -1,8 +1,11 @@
+use std::path::PathBuf;
+
 use agentcfg_core::{
-    clients_add, clients_remove, clients_set, clients_show, config_show, layer_relative_path_label,
-    parse_client_name, Client, ClientsAddRequest, ClientsMutationData, ClientsRemoveRequest,
-    ClientsSetRequest, ClientsShowData, ClientsShowRequest, ConfigLayerId, ConfigLayerState,
-    ConfigShowData, ConfigShowRequest, InstallLevel, PersistedClientSelection, WorkflowContext,
+    build_workflow_context, clients_add, clients_remove, clients_set, clients_show, config_show,
+    init, layer_relative_path_label, parse_client_name, Client, ClientsAddRequest,
+    ClientsMutationData, ClientsRemoveRequest, ClientsSetRequest, ClientsShowData,
+    ClientsShowRequest, ConfigLayerId, ConfigLayerState, ConfigShowData, ConfigShowRequest,
+    Diagnostic, InitData, InitRequest, InstallLevel, PersistedClientSelection, WorkflowContext,
     WorkflowResult,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -34,6 +37,7 @@ fn run() -> i32 {
             ClientsCommand::Add(args) => run_clients_add(args),
             ClientsCommand::Remove(args) => run_clients_remove(args),
         },
+        Command::Init(args) => run_init(args),
     }
 }
 
@@ -54,6 +58,7 @@ enum Command {
         #[command(subcommand)]
         command: ClientsCommand,
     },
+    Init(InitArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -70,13 +75,26 @@ enum ClientsCommand {
 }
 
 #[derive(Debug, Args)]
+struct WorkflowArgs {
+    #[arg(
+        long,
+        help = "Override Project Root discovery with an explicit directory. Project Root otherwise comes from git discovery, existing project markers, or init."
+    )]
+    project_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
 struct ConfigShowArgs {
+    #[command(flatten)]
+    workflow: WorkflowArgs,
     #[arg(long, value_enum, default_value = "text")]
     format: OutputFormat,
 }
 
 #[derive(Debug, Args)]
 struct ClientsLevelArgs {
+    #[command(flatten)]
+    workflow: WorkflowArgs,
     #[arg(long, value_enum, default_value = "text")]
     format: OutputFormat,
     #[arg(long, value_enum, default_value = "project")]
@@ -87,6 +105,8 @@ struct ClientsLevelArgs {
 
 #[derive(Debug, Args)]
 struct ClientsMutationArgs {
+    #[command(flatten)]
+    workflow: WorkflowArgs,
     #[arg(required = true)]
     clients: Vec<String>,
     #[arg(long, value_enum, default_value = "text")]
@@ -95,6 +115,14 @@ struct ClientsMutationArgs {
     level: LevelArg,
     #[arg(long, value_enum)]
     config_layer: Option<ConfigLayerArg>,
+}
+
+#[derive(Debug, Args)]
+struct InitArgs {
+    #[command(flatten)]
+    workflow: WorkflowArgs,
+    #[arg(long, value_enum, default_value = "text")]
+    format: OutputFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -118,7 +146,7 @@ enum ConfigLayerArg {
 }
 
 fn run_config_show(args: ConfigShowArgs) -> i32 {
-    let context = match current_workflow_context() {
+    let context = match workflow_context(args.workflow.project_root) {
         Ok(context) => context,
         Err(code) => return code,
     };
@@ -127,7 +155,7 @@ fn run_config_show(args: ConfigShowArgs) -> i32 {
 }
 
 fn run_clients_show(args: ClientsLevelArgs) -> i32 {
-    let context = match current_workflow_context() {
+    let context = match workflow_context(args.workflow.project_root) {
         Ok(context) => context,
         Err(code) => return code,
     };
@@ -165,11 +193,27 @@ fn run_clients_remove(args: ClientsMutationArgs) -> i32 {
     })
 }
 
+fn run_init(args: InitArgs) -> i32 {
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            eprintln!("error: cannot determine current directory: {error}");
+            return 1;
+        }
+    };
+
+    let result = init(InitRequest {
+        cwd,
+        explicit_project_root: args.workflow.project_root,
+    });
+    render_workflow(args.format, &result, render_init_text)
+}
+
 fn run_clients_mutation<F>(args: ClientsMutationArgs, workflow: F) -> i32
 where
     F: FnOnce(ClientsSetRequest) -> WorkflowResult<ClientsMutationData>,
 {
-    let context = match current_workflow_context() {
+    let context = match workflow_context(args.workflow.project_root) {
         Ok(context) => context,
         Err(code) => return code,
     };
@@ -197,9 +241,13 @@ fn parse_clients(names: &[String]) -> Result<Vec<Client>, String> {
     names.iter().map(|name| parse_client_name(name)).collect()
 }
 
-fn current_workflow_context() -> Result<WorkflowContext, i32> {
-    WorkflowContext::from_cwd().map_err(|error| {
+fn workflow_context(project_root: Option<PathBuf>) -> Result<WorkflowContext, i32> {
+    let cwd = std::env::current_dir().map_err(|error| {
         eprintln!("error: cannot determine current directory: {error}");
+        1
+    })?;
+    build_workflow_context(cwd, project_root).map_err(|error| {
+        eprintln!("error: {error}");
         1
     })
 }
@@ -217,6 +265,7 @@ where
             OutputFormat::Text => {
                 for blocker in &result.blockers {
                     eprintln!("error: {}", blocker.message);
+                    render_blocker_suggestions(blocker);
                 }
             }
             OutputFormat::Json => print!("{}", render_json(result)),
@@ -231,8 +280,14 @@ where
     0
 }
 
+fn render_blocker_suggestions(blocker: &Diagnostic) {
+    for action in &blocker.suggested_actions {
+        eprintln!("hint: {} — {}", action.command, action.reason);
+    }
+}
+
 fn render_config_show_text(result: &WorkflowResult<ConfigShowData>) -> String {
-    let mut output = String::new();
+    let mut output = render_diagnostics_text(&result.diagnostics);
     output.push_str("Agent Configuration\n");
     output.push_str(&format!(
         "Install Level: {}\n",
@@ -253,7 +308,7 @@ fn render_config_show_text(result: &WorkflowResult<ConfigShowData>) -> String {
 }
 
 fn render_clients_show_text(result: &WorkflowResult<ClientsShowData>) -> String {
-    let mut output = String::new();
+    let mut output = render_diagnostics_text(&result.diagnostics);
     output.push_str("Default Client Selection\n");
     output.push_str(&format!(
         "Install Level: {}\n",
@@ -295,6 +350,32 @@ fn render_clients_mutation_text(result: &WorkflowResult<ClientsMutationData>) ->
         }
     }
 
+    output
+}
+
+fn render_init_text(result: &WorkflowResult<InitData>) -> String {
+    let mut output = String::new();
+    output.push_str("Project initialized\n");
+    output.push_str(&format!(
+        "Project Root: {}\n",
+        result.data.project_root.display()
+    ));
+    if result.data.created_markers {
+        output.push_str("Project Markers: created\n");
+    } else {
+        output.push_str("Project Markers: already present\n");
+    }
+    output
+}
+
+fn render_diagnostics_text(diagnostics: &[Diagnostic]) -> String {
+    let mut output = String::new();
+    for diagnostic in diagnostics {
+        output.push_str(&format!("note: {}\n", diagnostic.message));
+        for action in &diagnostic.suggested_actions {
+            output.push_str(&format!("hint: {} — {}\n", action.command, action.reason));
+        }
+    }
     output
 }
 
