@@ -1,14 +1,15 @@
 use agentcfg_core::{
-    config_show, ConfigLayerId, ConfigLayerState, ConfigShowRequest, InstallLevel, WorkflowStatus,
+    config_show, ConfigLayerId, ConfigLayerState, ConfigShowRequest, InstallLevel, WorkflowName,
+    WorkflowStatus,
 };
 
 #[test]
 fn config_show_reports_missing_project_config_files() {
     let project_root = test_project_root("missing-project-config-files");
 
-    let result = config_show(ConfigShowRequest::project(project_root.clone()));
+    let result = config_show(ConfigShowRequest::for_project_root(project_root.clone()));
 
-    assert_eq!(result.workflow, "config_show");
+    assert_eq!(result.workflow, WorkflowName::ConfigShow);
     assert_eq!(result.status, WorkflowStatus::Success);
     assert!(result.diagnostics.is_empty());
     assert!(result.blockers.is_empty());
@@ -42,7 +43,7 @@ fn config_show_reports_existing_empty_project_config_files() {
     std::fs::write(project_root.join(".agentcfg").join("agentcfg.toml"), "")
         .expect("write user project config");
 
-    let result = config_show(ConfigShowRequest::project(project_root));
+    let result = config_show(ConfigShowRequest::for_project_root(project_root));
 
     assert_eq!(result.data.config_layers.len(), 2);
     assert_eq!(result.data.config_layers[0].state, ConfigLayerState::Empty);

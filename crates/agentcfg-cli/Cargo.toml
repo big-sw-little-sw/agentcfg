@@ -10,4 +10,5 @@ path = "src/main.rs"
 [dependencies]
 agentcfg-core = { path = "../agentcfg-core" }
 clap = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
