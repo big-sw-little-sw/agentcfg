@@ -25,8 +25,10 @@ pub use init::{init, InitData, InitRequest};
 pub use locations::{
     active_config_layers, build_workflow_context, discover_project_root, has_project_markers,
     is_project_marker_root, layer_label, layer_relative_path_label, persisted_config_layer_value,
-    user_config_path, DiscoveredProjectRoot, ProjectAnchorSource, ProjectRootError,
-    UserConfigPathError, WorkflowContext,
+    project_local_config_dir, shared_project_config_path, user_config_path,
+    user_project_config_path, DiscoveredProjectRoot, ProjectAnchorSource, ProjectRootError,
+    UserConfigPathError, WorkflowContext, AGENT_CONFIGURATION_FILE_NAME,
+    PROJECT_LOCAL_CONFIG_DIR_NAME, USER_CONFIG_DIR_NAME, USER_PROJECT_CONFIG_RELATIVE_PATH,
 };
 pub use project_anchor::{project_anchor_blocker, project_unanchored_diagnostic};
 

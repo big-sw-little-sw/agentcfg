@@ -2,7 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::locations::{discover_project_root, has_project_markers, ProjectRootError};
+use crate::locations::{
+    discover_project_root, has_project_markers, project_local_config_dir, ProjectRootError,
+};
 use crate::{Diagnostic, WorkflowResult, WorkflowStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +43,7 @@ pub fn init(request: InitRequest) -> WorkflowResult<InitData> {
         }
     };
 
-    let marker_dir = project_root.join(".agentcfg");
+    let marker_dir = project_local_config_dir(&project_root);
     let had_markers = has_project_markers(&project_root);
     let created_markers = !marker_dir.exists();
 

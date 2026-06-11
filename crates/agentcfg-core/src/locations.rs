@@ -6,6 +6,30 @@ use thiserror::Error;
 
 use crate::{ConfigLayerId, InstallLevel};
 
+/// Agent Configuration File basename shared by project and user config layers.
+pub const AGENT_CONFIGURATION_FILE_NAME: &str = "agentcfg.toml";
+
+/// Project-local configuration directory under Project Root.
+pub const PROJECT_LOCAL_CONFIG_DIR_NAME: &str = ".agentcfg";
+
+/// User Config directory name under XDG config home.
+pub const USER_CONFIG_DIR_NAME: &str = "agentcfg";
+
+/// User Project Config path relative to Project Root.
+pub const USER_PROJECT_CONFIG_RELATIVE_PATH: &str = concat!(".agentcfg", "/", "agentcfg.toml");
+
+pub fn shared_project_config_path(project_root: &Path) -> PathBuf {
+    project_root.join(AGENT_CONFIGURATION_FILE_NAME)
+}
+
+pub fn project_local_config_dir(project_root: &Path) -> PathBuf {
+    project_root.join(PROJECT_LOCAL_CONFIG_DIR_NAME)
+}
+
+pub fn user_project_config_path(project_root: &Path) -> PathBuf {
+    project_local_config_dir(project_root).join(AGENT_CONFIGURATION_FILE_NAME)
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum UserConfigPathError {
     #[error("cannot resolve user config path: neither XDG_CONFIG_HOME nor HOME is set")]
@@ -60,10 +84,8 @@ impl WorkflowContext {
 
     pub fn config_layer_path(&self, layer: ConfigLayerId) -> Result<PathBuf, UserConfigPathError> {
         match layer {
-            ConfigLayerId::SharedProject => Ok(self.project_root.join("agentcfg.toml")),
-            ConfigLayerId::UserProject => {
-                Ok(self.project_root.join(".agentcfg").join("agentcfg.toml"))
-            }
+            ConfigLayerId::SharedProject => Ok(shared_project_config_path(&self.project_root)),
+            ConfigLayerId::UserProject => Ok(user_project_config_path(&self.project_root)),
             ConfigLayerId::User => user_config_path(),
         }
     }
@@ -126,30 +148,33 @@ pub fn discover_project_root(start: &Path) -> DiscoveredProjectRoot {
 ///
 /// The project-local configuration directory itself is never treated as Project Root.
 pub fn is_project_marker_root(dir: &Path) -> bool {
-    if dir.file_name().is_some_and(|name| name == ".agentcfg") {
+    if dir
+        .file_name()
+        .is_some_and(|name| name == PROJECT_LOCAL_CONFIG_DIR_NAME)
+    {
         return false;
     }
     has_project_markers(dir)
 }
 
 pub fn has_project_markers(dir: &Path) -> bool {
-    dir.join("agentcfg.toml").is_file()
-        || dir.join(".agentcfg").join("agentcfg.toml").is_file()
-        || dir.join(".agentcfg").is_dir()
+    shared_project_config_path(dir).is_file()
+        || user_project_config_path(dir).is_file()
+        || project_local_config_dir(dir).is_dir()
 }
 
 pub fn user_config_path() -> Result<PathBuf, UserConfigPathError> {
     if let Ok(xdg_config_home) = std::env::var("XDG_CONFIG_HOME") {
         return Ok(PathBuf::from(xdg_config_home)
-            .join("agentcfg")
-            .join("agentcfg.toml"));
+            .join(USER_CONFIG_DIR_NAME)
+            .join(AGENT_CONFIGURATION_FILE_NAME));
     }
 
     if let Ok(home) = std::env::var("HOME") {
         return Ok(PathBuf::from(home)
             .join(".config")
-            .join("agentcfg")
-            .join("agentcfg.toml"));
+            .join(USER_CONFIG_DIR_NAME)
+            .join(AGENT_CONFIGURATION_FILE_NAME));
     }
 
     Err(UserConfigPathError::MissingHomeEnv)
@@ -172,9 +197,9 @@ pub fn layer_label(layer: ConfigLayerId) -> &'static str {
 
 pub fn layer_relative_path_label(layer: ConfigLayerId) -> &'static str {
     match layer {
-        ConfigLayerId::SharedProject => "agentcfg.toml",
-        ConfigLayerId::UserProject => ".agentcfg/agentcfg.toml",
-        ConfigLayerId::User => "agentcfg.toml",
+        ConfigLayerId::SharedProject => AGENT_CONFIGURATION_FILE_NAME,
+        ConfigLayerId::UserProject => USER_PROJECT_CONFIG_RELATIVE_PATH,
+        ConfigLayerId::User => AGENT_CONFIGURATION_FILE_NAME,
     }
 }
 

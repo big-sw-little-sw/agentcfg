@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
 use agentcfg_core::{
-    active_config_layers, discover_project_root, user_config_path, ConfigLayerId, InstallLevel,
-    ProjectAnchorSource, UserConfigPathError, WorkflowContext,
+    active_config_layers, discover_project_root, layer_relative_path_label,
+    project_local_config_dir, shared_project_config_path, user_config_path,
+    user_project_config_path, ConfigLayerId, InstallLevel, ProjectAnchorSource,
+    UserConfigPathError, WorkflowContext, AGENT_CONFIGURATION_FILE_NAME,
+    PROJECT_LOCAL_CONFIG_DIR_NAME, USER_PROJECT_CONFIG_RELATIVE_PATH,
 };
 
 #[test]
@@ -111,6 +114,37 @@ fn restore_env_var(name: &str, value: Option<String>) {
         Some(value) => std::env::set_var(name, value),
         None => std::env::remove_var(name),
     }
+}
+
+#[test]
+fn path_constants_and_helpers_stay_aligned() {
+    let project = PathBuf::from("/tmp/example-project");
+    assert_eq!(
+        layer_relative_path_label(ConfigLayerId::SharedProject),
+        AGENT_CONFIGURATION_FILE_NAME
+    );
+    assert_eq!(
+        layer_relative_path_label(ConfigLayerId::UserProject),
+        USER_PROJECT_CONFIG_RELATIVE_PATH
+    );
+    assert_eq!(
+        USER_PROJECT_CONFIG_RELATIVE_PATH,
+        format!("{PROJECT_LOCAL_CONFIG_DIR_NAME}/{AGENT_CONFIGURATION_FILE_NAME}")
+    );
+    assert_eq!(
+        shared_project_config_path(&project),
+        project.join(AGENT_CONFIGURATION_FILE_NAME)
+    );
+    assert_eq!(
+        user_project_config_path(&project),
+        project
+            .join(PROJECT_LOCAL_CONFIG_DIR_NAME)
+            .join(AGENT_CONFIGURATION_FILE_NAME)
+    );
+    assert_eq!(
+        project_local_config_dir(&project),
+        project.join(PROJECT_LOCAL_CONFIG_DIR_NAME)
+    );
 }
 
 fn test_dir(name: &str) -> PathBuf {
