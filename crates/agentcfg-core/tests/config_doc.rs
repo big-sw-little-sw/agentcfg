@@ -69,6 +69,32 @@ fn write_default_clients_creates_user_project_config_with_parent_directory() {
 }
 
 #[test]
+fn write_default_clients_preserves_toml_comments() {
+    let path = test_path("preserve-comments");
+    std::fs::write(
+        &path,
+        r#"# project defaults
+version = 1
+config-layer = "shared-project"
+# end header
+"#,
+    )
+    .expect("write config");
+
+    write_default_clients(
+        path.as_path(),
+        ConfigLayerId::SharedProject,
+        &PersistedClientSelection::Explicit(vec![Client::Codex]),
+    )
+    .expect("write config");
+
+    let content = std::fs::read_to_string(&path).expect("read config");
+    assert!(content.contains("# project defaults"));
+    assert!(content.contains("# end header"));
+    assert!(content.contains("clients = [\"codex\"]"));
+}
+
+#[test]
 fn write_default_clients_preserves_unrelated_toml_fields() {
     let path = test_path("preserve-fields");
     std::fs::write(

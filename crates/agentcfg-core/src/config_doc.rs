@@ -9,6 +9,7 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 use thiserror::Error;
+use toml_edit::{Array, DocumentMut, Item, Value};
 
 use crate::client::Client;
 use crate::locations::persisted_config_layer_value;
@@ -120,34 +121,34 @@ pub fn write_default_clients(
         std::fs::create_dir_all(parent)?;
     }
 
-    let mut table = if path.exists() {
+    let mut doc = if path.exists() {
         let content = std::fs::read_to_string(path)?;
         content
-            .parse::<toml::Table>()
-            .map_err(|error: toml::de::Error| ConfigDocError::Invalid(error.to_string()))?
+            .parse::<DocumentMut>()
+            .map_err(|error| ConfigDocError::Invalid(error.to_string()))?
     } else {
-        let mut table = toml::Table::new();
-        table.insert(
-            "version".to_string(),
-            toml::Value::Integer(i64::from(SCHEMA_VERSION)),
-        );
-        table.insert(
-            "config-layer".to_string(),
-            toml::Value::String(persisted_config_layer_value(layer).to_string()),
-        );
-        table
+        let mut doc = DocumentMut::new();
+        doc.insert("version", i64::from(SCHEMA_VERSION).into());
+        doc.insert("config-layer", persisted_config_layer_value(layer).into());
+        doc
     };
 
-    table.insert(
-        "config-layer".to_string(),
-        toml::Value::String(persisted_config_layer_value(layer).to_string()),
-    );
-    table.insert(
-        "clients".to_string(),
-        toml::Value::try_from(clients)
-            .map_err(|error| ConfigDocError::Invalid(error.to_string()))?,
-    );
+    doc.insert("config-layer", persisted_config_layer_value(layer).into());
+    doc.insert("clients", clients_toml_value(clients));
 
-    std::fs::write(path, table.to_string())?;
+    std::fs::write(path, doc.to_string())?;
     Ok(())
+}
+
+fn clients_toml_value(clients: &PersistedClientSelection) -> Item {
+    match clients {
+        PersistedClientSelection::All => Value::from("all").into(),
+        PersistedClientSelection::Explicit(clients) => {
+            let mut array = Array::new();
+            for client in clients {
+                array.push(client.to_string());
+            }
+            Value::Array(array).into()
+        }
+    }
 }

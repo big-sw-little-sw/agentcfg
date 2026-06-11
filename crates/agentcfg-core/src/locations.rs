@@ -2,43 +2,68 @@
 
 use std::path::{Path, PathBuf};
 
+use thiserror::Error;
+
 use crate::{ConfigLayerId, InstallLevel};
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum UserConfigPathError {
+    #[error("cannot resolve user config path: neither XDG_CONFIG_HOME nor HOME is set")]
+    MissingHomeEnv,
+}
+
+/// Workflow-scoped paths derived from the current working directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowContext {
+    pub project_root: PathBuf,
+}
+
+impl WorkflowContext {
+    pub fn from_cwd() -> Result<Self, std::io::Error> {
+        let cwd = std::env::current_dir()?;
+        Ok(Self {
+            project_root: resolve_project_root(&cwd),
+        })
+    }
+
+    pub fn from_project_root(project_root: PathBuf) -> Self {
+        Self { project_root }
+    }
+
+    pub fn config_layer_path(&self, layer: ConfigLayerId) -> Result<PathBuf, UserConfigPathError> {
+        match layer {
+            ConfigLayerId::SharedProject => Ok(self.project_root.join("agentcfg.toml")),
+            ConfigLayerId::UserProject => {
+                Ok(self.project_root.join(".agentcfg").join("agentcfg.toml"))
+            }
+            ConfigLayerId::User => user_config_path(),
+        }
+    }
+}
+
 pub fn resolve_project_root(start: &Path) -> PathBuf {
-    let mut current = start.to_path_buf();
-    loop {
-        if current.join(".git").exists() {
-            return current;
-        }
-        if !current.pop() {
-            return start.to_path_buf();
-        }
-    }
+    start
+        .ancestors()
+        .find(|dir| dir.join(".git").exists())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| start.to_path_buf())
 }
 
-pub fn config_layer_path(project_root: &Path, layer: ConfigLayerId) -> PathBuf {
-    match layer {
-        ConfigLayerId::SharedProject => project_root.join("agentcfg.toml"),
-        ConfigLayerId::UserProject => project_root.join(".agentcfg").join("agentcfg.toml"),
-        ConfigLayerId::User => user_config_path(),
-    }
-}
-
-pub fn user_config_path() -> PathBuf {
+pub fn user_config_path() -> Result<PathBuf, UserConfigPathError> {
     if let Ok(xdg_config_home) = std::env::var("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg_config_home)
+        return Ok(PathBuf::from(xdg_config_home)
             .join("agentcfg")
-            .join("agentcfg.toml");
+            .join("agentcfg.toml"));
     }
 
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home)
+        return Ok(PathBuf::from(home)
             .join(".config")
             .join("agentcfg")
-            .join("agentcfg.toml");
+            .join("agentcfg.toml"));
     }
 
-    PathBuf::from(".config/agentcfg/agentcfg.toml")
+    Err(UserConfigPathError::MissingHomeEnv)
 }
 
 pub fn active_config_layers(install_level: InstallLevel) -> Vec<ConfigLayerId> {

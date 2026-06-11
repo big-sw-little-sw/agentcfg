@@ -5,17 +5,16 @@ use std::path::PathBuf;
 use crate::client::Client;
 use crate::config_doc::PersistedClientSelection;
 use crate::config_doc::{read_default_clients, write_default_clients, ConfigDocError};
-use crate::locations::{
-    active_config_layers, config_layer_path, layer_label, layer_relative_path_label,
-};
+use crate::locations::{active_config_layers, layer_label, layer_relative_path_label};
 use crate::{
-    ConfigLayerId, Diagnostic, InstallLevel, SuggestedAction, WorkflowResult, WorkflowStatus,
+    ConfigLayerId, Diagnostic, InstallLevel, SuggestedAction, UserConfigPathError, WorkflowContext,
+    WorkflowResult, WorkflowStatus,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientsShowRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
     pub config_layer: Option<ConfigLayerId>,
 }
 
@@ -36,7 +35,7 @@ pub struct ClientsLayerReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientsSetRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
     pub config_layer: Option<ConfigLayerId>,
     pub clients: Vec<Client>,
 }
@@ -44,7 +43,7 @@ pub struct ClientsSetRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientsAddRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
     pub config_layer: Option<ConfigLayerId>,
     pub clients: Vec<Client>,
 }
@@ -52,7 +51,7 @@ pub struct ClientsAddRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientsRemoveRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
     pub config_layer: Option<ConfigLayerId>,
     pub clients: Vec<Client>,
 }
@@ -71,7 +70,13 @@ pub fn clients_show(request: ClientsShowRequest) -> WorkflowResult<ClientsShowDa
     let mut config_layers = Vec::new();
 
     for layer in layers {
-        let path = config_layer_path(&request.project_root, layer);
+        let path = match request.context.config_layer_path(layer) {
+            Ok(path) => path,
+            Err(error) => {
+                blockers.push(user_config_path_blocker(error));
+                continue;
+            }
+        };
         match read_default_clients(&path) {
             Ok(default_clients) => config_layers.push(ClientsLayerReport {
                 id: layer,
@@ -102,7 +107,7 @@ pub fn clients_set(request: ClientsSetRequest) -> WorkflowResult<ClientsMutation
     mutate_default_clients(
         "clients_set",
         request.install_level,
-        request.project_root,
+        request.context,
         request.config_layer,
         move |current| {
             if current.as_ref() == Some(&selection) {
@@ -119,7 +124,7 @@ pub fn clients_add(request: ClientsAddRequest) -> WorkflowResult<ClientsMutation
     mutate_default_clients(
         "clients_add",
         request.install_level,
-        request.project_root,
+        request.context,
         request.config_layer,
         move |current| {
             let mut next = match current {
@@ -154,7 +159,7 @@ pub fn clients_remove(request: ClientsRemoveRequest) -> WorkflowResult<ClientsMu
     mutate_default_clients(
         "clients_remove",
         request.install_level,
-        request.project_root,
+        request.context,
         request.config_layer,
         move |current| {
             let Some(PersistedClientSelection::Explicit(mut existing)) = current else {
@@ -172,7 +177,7 @@ pub fn clients_remove(request: ClientsRemoveRequest) -> WorkflowResult<ClientsMu
 fn mutate_default_clients(
     workflow: &'static str,
     install_level: InstallLevel,
-    project_root: PathBuf,
+    context: WorkflowContext,
     config_layer: Option<ConfigLayerId>,
     transform: impl FnOnce(
         Option<PersistedClientSelection>,
@@ -184,21 +189,32 @@ fn mutate_default_clients(
             return blocked_result(
                 workflow,
                 install_level,
-                project_root,
+                &context,
                 config_layer.unwrap_or(ConfigLayerId::UserProject),
                 vec![blocker],
             );
         }
     };
 
-    let path = config_layer_path(&project_root, layer);
+    let path = match context.config_layer_path(layer) {
+        Ok(path) => path,
+        Err(error) => {
+            return blocked_result(
+                workflow,
+                install_level,
+                &context,
+                layer,
+                vec![user_config_path_blocker(error)],
+            );
+        }
+    };
     let current = match read_default_clients(&path) {
         Ok(current) => current,
         Err(error) => {
             return blocked_result(
                 workflow,
                 install_level,
-                project_root,
+                &context,
                 layer,
                 vec![config_read_blocker(layer, &path, error)],
             );
@@ -208,7 +224,7 @@ fn mutate_default_clients(
     let (next, changed) = match transform(current) {
         Ok(value) => value,
         Err(blocker) => {
-            return blocked_result(workflow, install_level, project_root, layer, vec![blocker]);
+            return blocked_result(workflow, install_level, &context, layer, vec![blocker]);
         }
     };
     if changed {
@@ -216,7 +232,7 @@ fn mutate_default_clients(
             return blocked_result(
                 workflow,
                 install_level,
-                project_root,
+                &context,
                 layer,
                 vec![config_write_blocker(layer, &path, error)],
             );
@@ -266,11 +282,13 @@ fn successful_mutation(
 fn blocked_result(
     workflow: &'static str,
     install_level: InstallLevel,
-    project_root: PathBuf,
+    context: &WorkflowContext,
     layer: ConfigLayerId,
     blockers: Vec<Diagnostic>,
 ) -> WorkflowResult<ClientsMutationData> {
-    let path = config_layer_path(&project_root, layer);
+    let path = context
+        .config_layer_path(layer)
+        .unwrap_or_else(|_| PathBuf::from("<unresolved>"));
     WorkflowResult {
         workflow,
         status: WorkflowStatus::Success,
@@ -323,6 +341,18 @@ pub fn resolve_mutation_layer(
                 "User Level mutations use User Config only; omit --config-layer",
             )),
         },
+    }
+}
+
+fn user_config_path_blocker(error: UserConfigPathError) -> Diagnostic {
+    Diagnostic {
+        code: "user-config-path-unresolved".to_string(),
+        message: format!("Cannot resolve User Config path: {error}"),
+        context: vec![(
+            "config-layer".to_string(),
+            layer_relative_path_label(ConfigLayerId::User).to_string(),
+        )],
+        suggested_actions: Vec::new(),
     }
 }
 

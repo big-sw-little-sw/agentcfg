@@ -233,8 +233,16 @@ A repository or working tree with a root where project-level Agent Configuration
 _Avoid_: repo, workspace, directory
 
 **Project Root**:
-The root directory of a **Project** where project-level Config Layers, Lockfiles, Managed State, and Client Search Locations are resolved.
+The root directory of a **Project** where project-level Config Layers, Lockfiles, Managed State, and Client Search Locations are resolved. Project Root is discovered from git repository root, existing project markers, explicit `--project-root`, or `init`; it is not silently inferred from an unmarked current working directory for mutation workflows.
 _Avoid_: repo root, workspace root
+
+**Project Anchor**:
+Evidence that a directory is an intentional **Project** for Project Level workflows. Anchors come from git repository root discovery, existing project-level Agent Configuration markers, explicit `--project-root`, or successful `init`.
+_Avoid_: project marker file, init stamp, root hint
+
+**Project Marker**:
+Filesystem evidence that a directory already hosts project-level Agent Configuration: Shared Project Config, User Project Config, or the project-local configuration directory under the **Project Root**.
+_Avoid_: dotfolder, config folder, project stamp
 
 **Install Level**:
 Whether `agentcfg` applies managed configuration at the **Project Level** or the **User Level**. The Install Level determines which Config Layers are active and which Client Search Locations are considered.
@@ -249,6 +257,10 @@ The Install Level that applies User Config to user-level Client Search Locations
 _Avoid_: user scope
 
 ### Workflows
+
+**Init**:
+A workflow that establishes **Project Markers** at a chosen **Project Root** so later Project Level workflows can resolve a **Project Anchor** without requiring git repository discovery.
+_Avoid_: bootstrap, setup wizard, project create
 
 **Select Skill**:
 A workflow that adds a **Skill** to **Skill Selection** in a **Config Layer**.

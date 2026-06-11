@@ -1,8 +1,8 @@
 use agentcfg_core::{
     clients_add, clients_remove, clients_set, clients_show, config_show, layer_relative_path_label,
-    parse_client_name, resolve_project_root, Client, ClientsAddRequest, ClientsMutationData,
-    ClientsRemoveRequest, ClientsSetRequest, ClientsShowData, ClientsShowRequest, ConfigLayerId,
-    ConfigLayerState, ConfigShowData, ConfigShowRequest, InstallLevel, PersistedClientSelection,
+    parse_client_name, Client, ClientsAddRequest, ClientsMutationData, ClientsRemoveRequest,
+    ClientsSetRequest, ClientsShowData, ClientsShowRequest, ConfigLayerId, ConfigLayerState,
+    ConfigShowData, ConfigShowRequest, InstallLevel, PersistedClientSelection, WorkflowContext,
     WorkflowResult,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -118,22 +118,22 @@ enum ConfigLayerArg {
 }
 
 fn run_config_show(args: ConfigShowArgs) -> i32 {
-    let project_root = match current_project_root() {
-        Ok(project_root) => project_root,
+    let context = match current_workflow_context() {
+        Ok(context) => context,
         Err(code) => return code,
     };
-    let result = config_show(ConfigShowRequest::project(project_root));
+    let result = config_show(ConfigShowRequest::project(context));
     render_workflow(args.format, &result, render_config_show_text)
 }
 
 fn run_clients_show(args: ClientsLevelArgs) -> i32 {
-    let project_root = match current_project_root() {
-        Ok(project_root) => project_root,
+    let context = match current_workflow_context() {
+        Ok(context) => context,
         Err(code) => return code,
     };
     let result = clients_show(ClientsShowRequest {
         install_level: args.level.into(),
-        project_root,
+        context,
         config_layer: args.config_layer.map(Into::into),
     });
     render_workflow(args.format, &result, render_clients_show_text)
@@ -147,7 +147,7 @@ fn run_clients_add(args: ClientsMutationArgs) -> i32 {
     run_clients_mutation(args, |request| {
         clients_add(ClientsAddRequest {
             install_level: request.install_level,
-            project_root: request.project_root,
+            context: request.context,
             config_layer: request.config_layer,
             clients: request.clients,
         })
@@ -158,7 +158,7 @@ fn run_clients_remove(args: ClientsMutationArgs) -> i32 {
     run_clients_mutation(args, |request| {
         clients_remove(ClientsRemoveRequest {
             install_level: request.install_level,
-            project_root: request.project_root,
+            context: request.context,
             config_layer: request.config_layer,
             clients: request.clients,
         })
@@ -169,8 +169,8 @@ fn run_clients_mutation<F>(args: ClientsMutationArgs, workflow: F) -> i32
 where
     F: FnOnce(ClientsSetRequest) -> WorkflowResult<ClientsMutationData>,
 {
-    let project_root = match current_project_root() {
-        Ok(project_root) => project_root,
+    let context = match current_workflow_context() {
+        Ok(context) => context,
         Err(code) => return code,
     };
 
@@ -184,7 +184,7 @@ where
 
     let request = ClientsSetRequest {
         install_level: args.level.into(),
-        project_root,
+        context,
         config_layer: args.config_layer.map(Into::into),
         clients,
     };
@@ -197,13 +197,11 @@ fn parse_clients(names: &[String]) -> Result<Vec<Client>, String> {
     names.iter().map(|name| parse_client_name(name)).collect()
 }
 
-fn current_project_root() -> Result<std::path::PathBuf, i32> {
-    std::env::current_dir()
-        .map(|cwd| resolve_project_root(&cwd))
-        .map_err(|error| {
-            eprintln!("error: cannot determine current directory: {error}");
-            1
-        })
+fn current_workflow_context() -> Result<WorkflowContext, i32> {
+    WorkflowContext::from_cwd().map_err(|error| {
+        eprintln!("error: cannot determine current directory: {error}");
+        1
+    })
 }
 
 fn render_workflow<T>(

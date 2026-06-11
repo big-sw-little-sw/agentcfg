@@ -20,8 +20,8 @@ pub use config_doc::{
     SCHEMA_VERSION,
 };
 pub use locations::{
-    active_config_layers, config_layer_path, layer_label, layer_relative_path_label,
-    persisted_config_layer_value, resolve_project_root, user_config_path,
+    active_config_layers, layer_label, layer_relative_path_label, persisted_config_layer_value,
+    resolve_project_root, user_config_path, UserConfigPathError, WorkflowContext,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -67,14 +67,14 @@ pub struct ProgressEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigShowRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
 }
 
 impl ConfigShowRequest {
-    pub fn project(project_root: impl Into<PathBuf>) -> Self {
+    pub fn project(context: WorkflowContext) -> Self {
         Self {
             install_level: InstallLevel::Project,
-            project_root: project_root.into(),
+            context,
         }
     }
 }
@@ -117,24 +117,26 @@ pub enum InstallLevel {
 
 pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData> {
     let layers = active_config_layers(request.install_level);
-    let config_layers = layers
-        .into_iter()
-        .map(|layer| {
-            let path = config_layer_path(&request.project_root, layer);
-            ConfigLayerReport {
+    let mut blockers = Vec::new();
+    let mut config_layers = Vec::new();
+
+    for layer in layers {
+        match request.context.config_layer_path(layer) {
+            Ok(path) => config_layers.push(ConfigLayerReport {
                 id: layer,
                 name: layer_label(layer),
                 state: config_layer_state(&path),
                 path,
-            }
-        })
-        .collect();
+            }),
+            Err(error) => blockers.push(user_config_path_blocker(error)),
+        }
+    }
 
     WorkflowResult {
         workflow: "config_show",
         status: WorkflowStatus::Success,
         diagnostics: Vec::new(),
-        blockers: Vec::new(),
+        blockers,
         suggested_actions: Vec::new(),
         progress_events: Vec::new(),
         data: ConfigShowData {
@@ -149,5 +151,17 @@ fn config_layer_state(path: &std::path::Path) -> ConfigLayerState {
         ConfigLayerState::Empty
     } else {
         ConfigLayerState::Missing
+    }
+}
+
+fn user_config_path_blocker(error: UserConfigPathError) -> Diagnostic {
+    Diagnostic {
+        code: "user-config-path-unresolved".to_string(),
+        message: format!("Cannot resolve User Config path: {error}"),
+        context: vec![(
+            "config-layer".to_string(),
+            layer_relative_path_label(ConfigLayerId::User).to_string(),
+        )],
+        suggested_actions: Vec::new(),
     }
 }
