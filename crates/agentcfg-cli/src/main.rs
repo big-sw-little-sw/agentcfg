@@ -1,5 +1,8 @@
 use agentcfg_core::{
-    config_show, ConfigLayerId, ConfigLayerState, ConfigShowData, ConfigShowRequest, InstallLevel,
+    clients_add, clients_remove, clients_set, clients_show, config_show, layer_relative_path_label,
+    parse_client_name, resolve_project_root, Client, ClientsAddRequest, ClientsMutationData,
+    ClientsRemoveRequest, ClientsSetRequest, ClientsShowData, ClientsShowRequest, ConfigLayerId,
+    ConfigLayerState, ConfigShowData, ConfigShowRequest, InstallLevel, PersistedClientSelection,
     WorkflowResult,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -23,7 +26,13 @@ fn run() -> i32 {
 
     match cli.command {
         Command::Config { command } => match command {
-            ConfigCommand::Show(args) => run_config_show(args.format),
+            ConfigCommand::Show(args) => run_config_show(args),
+        },
+        Command::Clients { command } => match command {
+            ClientsCommand::Show(args) => run_clients_show(args),
+            ClientsCommand::Set(args) => run_clients_set(args),
+            ClientsCommand::Add(args) => run_clients_add(args),
+            ClientsCommand::Remove(args) => run_clients_remove(args),
         },
     }
 }
@@ -41,11 +50,23 @@ enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+    Clients {
+        #[command(subcommand)]
+        command: ClientsCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
     Show(ConfigShowArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum ClientsCommand {
+    Show(ClientsLevelArgs),
+    Set(ClientsMutationArgs),
+    Add(ClientsMutationArgs),
+    Remove(ClientsMutationArgs),
 }
 
 #[derive(Debug, Args)]
@@ -54,29 +75,165 @@ struct ConfigShowArgs {
     format: OutputFormat,
 }
 
+#[derive(Debug, Args)]
+struct ClientsLevelArgs {
+    #[arg(long, value_enum, default_value = "text")]
+    format: OutputFormat,
+    #[arg(long, value_enum, default_value = "project")]
+    level: LevelArg,
+    #[arg(long, value_enum)]
+    config_layer: Option<ConfigLayerArg>,
+}
+
+#[derive(Debug, Args)]
+struct ClientsMutationArgs {
+    #[arg(required = true)]
+    clients: Vec<String>,
+    #[arg(long, value_enum, default_value = "text")]
+    format: OutputFormat,
+    #[arg(long, value_enum, default_value = "project")]
+    level: LevelArg,
+    #[arg(long, value_enum)]
+    config_layer: Option<ConfigLayerArg>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     Text,
     Json,
 }
 
-fn run_config_show(format: OutputFormat) -> i32 {
-    let project_root = match std::env::current_dir() {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum LevelArg {
+    Project,
+    User,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ConfigLayerArg {
+    #[value(name = "shared-project")]
+    SharedProject,
+    #[value(name = "user-project")]
+    UserProject,
+}
+
+fn run_config_show(args: ConfigShowArgs) -> i32 {
+    let project_root = match current_project_root() {
         Ok(project_root) => project_root,
-        Err(error) => {
-            eprintln!("error: cannot determine current directory: {error}");
+        Err(code) => return code,
+    };
+    let result = config_show(ConfigShowRequest::project(project_root));
+    render_workflow(args.format, &result, render_config_show_text)
+}
+
+fn run_clients_show(args: ClientsLevelArgs) -> i32 {
+    let project_root = match current_project_root() {
+        Ok(project_root) => project_root,
+        Err(code) => return code,
+    };
+    let result = clients_show(ClientsShowRequest {
+        install_level: args.level.into(),
+        project_root,
+        config_layer: args.config_layer.map(Into::into),
+    });
+    render_workflow(args.format, &result, render_clients_show_text)
+}
+
+fn run_clients_set(args: ClientsMutationArgs) -> i32 {
+    run_clients_mutation(args, clients_set)
+}
+
+fn run_clients_add(args: ClientsMutationArgs) -> i32 {
+    run_clients_mutation(args, |request| {
+        clients_add(ClientsAddRequest {
+            install_level: request.install_level,
+            project_root: request.project_root,
+            config_layer: request.config_layer,
+            clients: request.clients,
+        })
+    })
+}
+
+fn run_clients_remove(args: ClientsMutationArgs) -> i32 {
+    run_clients_mutation(args, |request| {
+        clients_remove(ClientsRemoveRequest {
+            install_level: request.install_level,
+            project_root: request.project_root,
+            config_layer: request.config_layer,
+            clients: request.clients,
+        })
+    })
+}
+
+fn run_clients_mutation<F>(args: ClientsMutationArgs, workflow: F) -> i32
+where
+    F: FnOnce(ClientsSetRequest) -> WorkflowResult<ClientsMutationData>,
+{
+    let project_root = match current_project_root() {
+        Ok(project_root) => project_root,
+        Err(code) => return code,
+    };
+
+    let clients = match parse_clients(&args.clients) {
+        Ok(clients) => clients,
+        Err(message) => {
+            eprintln!("error: {message}");
             return 1;
         }
     };
-    let result = config_show(ConfigShowRequest::project(project_root));
+
+    let request = ClientsSetRequest {
+        install_level: args.level.into(),
+        project_root,
+        config_layer: args.config_layer.map(Into::into),
+        clients,
+    };
+
+    let result = workflow(request);
+    render_workflow(args.format, &result, render_clients_mutation_text)
+}
+
+fn parse_clients(names: &[String]) -> Result<Vec<Client>, String> {
+    names.iter().map(|name| parse_client_name(name)).collect()
+}
+
+fn current_project_root() -> Result<std::path::PathBuf, i32> {
+    std::env::current_dir()
+        .map(|cwd| resolve_project_root(&cwd))
+        .map_err(|error| {
+            eprintln!("error: cannot determine current directory: {error}");
+            1
+        })
+}
+
+fn render_workflow<T>(
+    format: OutputFormat,
+    result: &WorkflowResult<T>,
+    render_text: fn(&WorkflowResult<T>) -> String,
+) -> i32
+where
+    T: serde::Serialize,
+{
+    if !result.blockers.is_empty() {
+        match format {
+            OutputFormat::Text => {
+                for blocker in &result.blockers {
+                    eprintln!("error: {}", blocker.message);
+                }
+            }
+            OutputFormat::Json => print!("{}", render_json(result)),
+        }
+        return 1;
+    }
+
     match format {
-        OutputFormat::Text => print!("{}", render_text(&result)),
-        OutputFormat::Json => print!("{}", render_json(&result)),
+        OutputFormat::Text => print!("{}", render_text(result)),
+        OutputFormat::Json => print!("{}", render_json(result)),
     }
     0
 }
 
-fn render_text(result: &WorkflowResult<ConfigShowData>) -> String {
+fn render_config_show_text(result: &WorkflowResult<ConfigShowData>) -> String {
     let mut output = String::new();
     output.push_str("Agent Configuration\n");
     output.push_str(&format!(
@@ -90,23 +247,70 @@ fn render_text(result: &WorkflowResult<ConfigShowData>) -> String {
             "- {}: {} ({})\n",
             layer.name,
             config_layer_state_label(layer.state),
-            config_layer_path_label(layer.id)
+            layer_relative_path_label(layer.id)
         ));
     }
 
     output
 }
 
-fn render_json(result: &WorkflowResult<ConfigShowData>) -> String {
+fn render_clients_show_text(result: &WorkflowResult<ClientsShowData>) -> String {
+    let mut output = String::new();
+    output.push_str("Default Client Selection\n");
+    output.push_str(&format!(
+        "Install Level: {}\n",
+        install_level_label(result.data.install_level)
+    ));
+    output.push_str("Config Layers:\n");
+
+    for layer in &result.data.config_layers {
+        output.push_str(&format!(
+            "- {}: {} ({})\n",
+            layer.name,
+            default_clients_label(layer.default_clients.as_ref()),
+            layer_relative_path_label(layer.id)
+        ));
+    }
+
+    output
+}
+
+fn render_clients_mutation_text(result: &WorkflowResult<ClientsMutationData>) -> String {
+    let mut output = String::new();
+    output.push_str("Default Client Selection updated\n");
+    output.push_str(&format!(
+        "Install Level: {}\n",
+        install_level_label(result.data.install_level)
+    ));
+    output.push_str(&format!(
+        "Config Layer: {}\n",
+        result.data.config_layer.name
+    ));
+    output.push_str(&format!(
+        "Clients: {}\n",
+        default_clients_label(Some(&result.data.default_clients))
+    ));
+
+    if result.data.changed {
+        for action in &result.suggested_actions {
+            output.push_str(&format!("Next: {} — {}\n", action.command, action.reason));
+        }
+    }
+
+    output
+}
+
+fn render_json<T: serde::Serialize>(result: &WorkflowResult<T>) -> String {
     format!(
         "{}\n",
-        serde_json::to_string(result).expect("config show result serializes")
+        serde_json::to_string(result).expect("workflow result serializes")
     )
 }
 
 fn install_level_label(install_level: InstallLevel) -> &'static str {
     match install_level {
         InstallLevel::Project => "project",
+        InstallLevel::User => "user",
     }
 }
 
@@ -117,9 +321,33 @@ fn config_layer_state_label(state: ConfigLayerState) -> &'static str {
     }
 }
 
-fn config_layer_path_label(id: ConfigLayerId) -> &'static str {
-    match id {
-        ConfigLayerId::SharedProject => "agentcfg.toml",
-        ConfigLayerId::UserProject => ".agentcfg/agentcfg.toml",
+fn default_clients_label(clients: Option<&PersistedClientSelection>) -> String {
+    match clients {
+        None => "none".to_string(),
+        Some(PersistedClientSelection::All) => "all".to_string(),
+        Some(PersistedClientSelection::Explicit(values)) if values.is_empty() => "none".to_string(),
+        Some(PersistedClientSelection::Explicit(values)) => values
+            .iter()
+            .map(|client| client.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
+}
+
+impl From<LevelArg> for InstallLevel {
+    fn from(level: LevelArg) -> Self {
+        match level {
+            LevelArg::Project => Self::Project,
+            LevelArg::User => Self::User,
+        }
+    }
+}
+
+impl From<ConfigLayerArg> for ConfigLayerId {
+    fn from(layer: ConfigLayerArg) -> Self {
+        match layer {
+            ConfigLayerArg::SharedProject => Self::SharedProject,
+            ConfigLayerArg::UserProject => Self::UserProject,
+        }
     }
 }

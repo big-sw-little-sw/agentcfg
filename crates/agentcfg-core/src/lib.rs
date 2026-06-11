@@ -1,8 +1,28 @@
 //! Core workflow API for agentcfg.
 
+mod client;
+mod clients;
+mod config_doc;
+mod locations;
+
 use std::path::PathBuf;
 
 use serde::Serialize;
+
+pub use client::{all_clients, parse_client_name, Client};
+pub use clients::{
+    clients_add, clients_remove, clients_set, clients_show, resolve_mutation_layer,
+    ClientsAddRequest, ClientsLayerReport, ClientsMutationData, ClientsRemoveRequest,
+    ClientsSetRequest, ClientsShowData, ClientsShowRequest,
+};
+pub use config_doc::{
+    read_default_clients, write_default_clients, ConfigDocError, PersistedClientSelection,
+    SCHEMA_VERSION,
+};
+pub use locations::{
+    active_config_layers, config_layer_path, layer_label, layer_relative_path_label,
+    persisted_config_layer_value, resolve_project_root, user_config_path,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkflowResult<T> {
@@ -78,9 +98,9 @@ pub struct ConfigLayerReport {
 pub enum ConfigLayerId {
     SharedProject,
     UserProject,
+    User,
 }
 
-/// Local Agent Configuration File state; later parsing slices can add authored, invalid, and unreadable states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConfigLayerState {
@@ -92,11 +112,23 @@ pub enum ConfigLayerState {
 #[serde(rename_all = "kebab-case")]
 pub enum InstallLevel {
     Project,
+    User,
 }
 
 pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData> {
-    let shared_project_path = request.project_root.join("agentcfg.toml");
-    let user_project_path = request.project_root.join(".agentcfg").join("agentcfg.toml");
+    let layers = active_config_layers(request.install_level);
+    let config_layers = layers
+        .into_iter()
+        .map(|layer| {
+            let path = config_layer_path(&request.project_root, layer);
+            ConfigLayerReport {
+                id: layer,
+                name: layer_label(layer),
+                state: config_layer_state(&path),
+                path,
+            }
+        })
+        .collect();
 
     WorkflowResult {
         workflow: "config_show",
@@ -107,20 +139,7 @@ pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData>
         progress_events: Vec::new(),
         data: ConfigShowData {
             install_level: request.install_level,
-            config_layers: vec![
-                ConfigLayerReport {
-                    id: ConfigLayerId::SharedProject,
-                    name: "Shared Project Config",
-                    state: config_layer_state(&shared_project_path),
-                    path: shared_project_path,
-                },
-                ConfigLayerReport {
-                    id: ConfigLayerId::UserProject,
-                    name: "User Project Config",
-                    state: config_layer_state(&user_project_path),
-                    path: user_project_path,
-                },
-            ],
+            config_layers,
         },
     }
 }
