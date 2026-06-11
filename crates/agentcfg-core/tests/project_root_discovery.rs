@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use agentcfg_core::{
-    build_workflow_context, discover_project_root, has_project_markers, ProjectAnchorSource,
-    ProjectRootError,
+    build_workflow_context, discover_project_root, has_project_markers, is_project_marker_root,
+    ProjectAnchorSource, ProjectRootError,
 };
 
 #[test]
@@ -111,6 +111,30 @@ fn has_project_markers_detects_shared_user_and_config_directory_markers() {
     let dir_only = fixture.root.join("dir-only");
     std::fs::create_dir_all(dir_only.join(".agentcfg")).expect("create config dir");
     assert!(has_project_markers(&dir_only));
+}
+
+#[test]
+fn discover_project_root_from_inside_agentcfg_directory_finds_parent_project() {
+    let fixture = Fixture::new("inside-agentcfg");
+    let project = fixture.root.join("project");
+    let inside_agentcfg = project.join(".agentcfg");
+    std::fs::create_dir_all(inside_agentcfg.join("state")).expect("create managed state dir");
+    std::fs::write(inside_agentcfg.join("agentcfg.toml"), "").expect("write user config");
+
+    let discovered = discover_project_root(&inside_agentcfg.join("state"));
+    assert_eq!(discovered.root, project);
+    assert_eq!(discovered.anchor, Some(ProjectAnchorSource::ProjectMarkers));
+}
+
+#[test]
+fn is_project_marker_root_rejects_agentcfg_directory_itself() {
+    let fixture = Fixture::new("agentcfg-not-root");
+    let agentcfg_dir = fixture.root.join("project").join(".agentcfg");
+    std::fs::create_dir_all(&agentcfg_dir).expect("create config dir");
+    std::fs::write(agentcfg_dir.join("agentcfg.toml"), "").expect("write user config");
+
+    assert!(has_project_markers(&agentcfg_dir));
+    assert!(!is_project_marker_root(&agentcfg_dir));
 }
 
 struct Fixture {

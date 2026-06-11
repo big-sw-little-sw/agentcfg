@@ -24,7 +24,7 @@ pub use config_doc::{
 pub use init::{init, InitData, InitRequest};
 pub use locations::{
     active_config_layers, build_workflow_context, discover_project_root, has_project_markers,
-    layer_label, layer_relative_path_label, persisted_config_layer_value, resolve_project_root,
+    is_project_marker_root, layer_label, layer_relative_path_label, persisted_config_layer_value,
     user_config_path, DiscoveredProjectRoot, ProjectAnchorSource, ProjectRootError,
     UserConfigPathError, WorkflowContext,
 };

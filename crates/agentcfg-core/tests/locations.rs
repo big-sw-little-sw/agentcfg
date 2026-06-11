@@ -1,28 +1,28 @@
 use std::path::PathBuf;
 
 use agentcfg_core::{
-    active_config_layers, resolve_project_root, user_config_path, ConfigLayerId, InstallLevel,
+    active_config_layers, discover_project_root, user_config_path, ConfigLayerId, InstallLevel,
     ProjectAnchorSource, UserConfigPathError, WorkflowContext,
 };
 
 #[test]
-fn resolve_project_root_uses_git_repository_root() {
+fn discover_project_root_uses_git_repository_root() {
     let root = test_dir("git-root");
     let nested = root.join("packages").join("app");
     std::fs::create_dir_all(&nested).expect("create nested dir");
     std::fs::create_dir_all(root.join(".git")).expect("create git dir");
 
-    let discovered = resolve_project_root(&nested);
+    let discovered = discover_project_root(&nested);
     assert_eq!(discovered.root, root);
     assert_eq!(discovered.anchor, Some(ProjectAnchorSource::GitRoot));
 }
 
 #[test]
-fn resolve_project_root_is_unanchored_without_git_or_markers() {
+fn discover_project_root_is_unanchored_without_git_or_markers() {
     let root = test_dir("no-git-root");
     std::fs::create_dir_all(&root).expect("create dir");
 
-    let discovered = resolve_project_root(&root);
+    let discovered = discover_project_root(&root);
     assert_eq!(discovered.root, root);
     assert_eq!(discovered.anchor, None);
 }

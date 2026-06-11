@@ -94,35 +94,42 @@ pub fn build_workflow_context(
 }
 
 pub fn discover_project_root(start: &Path) -> DiscoveredProjectRoot {
-    let git_root = start
+    if let Some(root) = start
         .ancestors()
         .find(|dir| dir.join(".git").exists())
-        .map(Path::to_path_buf);
-    let marker_root = start
-        .ancestors()
-        .find(|dir| has_project_markers(dir))
-        .map(Path::to_path_buf);
-
-    if let Some(root) = git_root {
-        DiscoveredProjectRoot {
+        .map(Path::to_path_buf)
+    {
+        return DiscoveredProjectRoot {
             root,
             anchor: Some(ProjectAnchorSource::GitRoot),
-        }
-    } else if let Some(root) = marker_root {
-        DiscoveredProjectRoot {
+        };
+    }
+
+    if let Some(root) = start
+        .ancestors()
+        .find(|dir| is_project_marker_root(dir))
+        .map(Path::to_path_buf)
+    {
+        return DiscoveredProjectRoot {
             root,
             anchor: Some(ProjectAnchorSource::ProjectMarkers),
-        }
-    } else {
-        DiscoveredProjectRoot {
-            root: start.to_path_buf(),
-            anchor: None,
-        }
+        };
+    }
+
+    DiscoveredProjectRoot {
+        root: start.to_path_buf(),
+        anchor: None,
     }
 }
 
-pub fn resolve_project_root(start: &Path) -> DiscoveredProjectRoot {
-    discover_project_root(start)
+/// Whether `dir` is a Project Root evidenced by project markers.
+///
+/// The project-local configuration directory itself is never treated as Project Root.
+pub fn is_project_marker_root(dir: &Path) -> bool {
+    if dir.file_name().is_some_and(|name| name == ".agentcfg") {
+        return false;
+    }
+    has_project_markers(dir)
 }
 
 pub fn has_project_markers(dir: &Path) -> bool {
