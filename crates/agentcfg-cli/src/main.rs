@@ -1,8 +1,12 @@
+mod clients;
+
 use agentcfg_core::{
-    config_show, ConfigLayerId, ConfigLayerState, ConfigShowData, ConfigShowRequest, InstallLevel,
-    WorkflowResult,
+    config_show, ConfigLayerId, ConfigLayerState, ConfigShowData, ConfigShowRequest, WorkflowResult,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use serde::Serialize;
+
+pub(crate) type CliResult<T> = Result<T, CliError>;
 
 fn main() {
     let exit_code = run();
@@ -25,6 +29,7 @@ fn run() -> i32 {
         Command::Config { command } => match command {
             ConfigCommand::Show(args) => run_config_show(args.format),
         },
+        Command::Clients { command } => clients::run(command),
     }
 }
 
@@ -41,6 +46,10 @@ enum Command {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+    Clients {
+        #[command(subcommand)]
+        command: clients::ClientsCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -55,34 +64,32 @@ struct ConfigShowArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum OutputFormat {
+pub(crate) enum OutputFormat {
     Text,
     Json,
 }
 
 fn run_config_show(format: OutputFormat) -> i32 {
-    let project_root = match std::env::current_dir() {
-        Ok(project_root) => project_root,
-        Err(error) => {
-            eprintln!("error: cannot determine current directory: {error}");
-            return 1;
-        }
-    };
-    let result = config_show(ConfigShowRequest::project(project_root));
-    match format {
-        OutputFormat::Text => print!("{}", render_text(&result)),
-        OutputFormat::Json => print!("{}", render_json(&result)),
+    match try_run_config_show(format) {
+        Ok(exit_code) => exit_code,
+        Err(error) => error.print(),
     }
-    0
 }
 
-fn render_text(result: &WorkflowResult<ConfigShowData>) -> String {
+fn try_run_config_show(format: OutputFormat) -> CliResult<i32> {
+    let project_root = current_dir()?;
+    let result = config_show(ConfigShowRequest::for_project_root(project_root));
+    match format {
+        OutputFormat::Text => print!("{}", render_config_show_text(&result)),
+        OutputFormat::Json => print!("{}", render_json(&result)),
+    }
+    Ok(0)
+}
+
+fn render_config_show_text(result: &WorkflowResult<ConfigShowData>) -> String {
     let mut output = String::new();
     output.push_str("Agent Configuration\n");
-    output.push_str(&format!(
-        "Install Level: {}\n",
-        install_level_label(result.data.install_level)
-    ));
+    output.push_str(&format!("Install Level: {}\n", result.data.install_level));
     output.push_str("Config Layers:\n");
 
     for layer in &result.data.config_layers {
@@ -97,23 +104,18 @@ fn render_text(result: &WorkflowResult<ConfigShowData>) -> String {
     output
 }
 
-fn render_json(result: &WorkflowResult<ConfigShowData>) -> String {
+pub(crate) fn render_json<T: Serialize>(result: &WorkflowResult<T>) -> String {
     format!(
         "{}\n",
-        serde_json::to_string(result).expect("config show result serializes")
+        serde_json::to_string(result).expect("workflow result serializes")
     )
-}
-
-fn install_level_label(install_level: InstallLevel) -> &'static str {
-    match install_level {
-        InstallLevel::Project => "project",
-    }
 }
 
 fn config_layer_state_label(state: ConfigLayerState) -> &'static str {
     match state {
         ConfigLayerState::Missing => "missing",
         ConfigLayerState::Empty => "empty",
+        ConfigLayerState::Authored => "authored",
     }
 }
 
@@ -121,5 +123,38 @@ fn config_layer_path_label(id: ConfigLayerId) -> &'static str {
     match id {
         ConfigLayerId::SharedProject => "agentcfg.toml",
         ConfigLayerId::UserProject => ".agentcfg/agentcfg.toml",
+        ConfigLayerId::User => "user config path",
+    }
+}
+
+fn current_dir() -> CliResult<std::path::PathBuf> {
+    std::env::current_dir()
+        .map_err(|error| CliError::runtime(format!("cannot determine current directory: {error}")))
+}
+
+#[derive(Debug)]
+pub(crate) struct CliError {
+    message: String,
+    exit_code: i32,
+}
+
+impl CliError {
+    pub(crate) fn invalid_input(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            exit_code: 2,
+        }
+    }
+
+    pub(crate) fn runtime(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            exit_code: 1,
+        }
+    }
+
+    pub(crate) fn print(self) -> i32 {
+        eprintln!("error: {}", self.message);
+        self.exit_code
     }
 }
