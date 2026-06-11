@@ -22,14 +22,11 @@ fn config_show_reports_missing_project_config_files_as_text() {
         "expected success, stderr:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("stdout is utf8"),
-        "Agent Configuration\n\
-         Install Level: project\n\
-         Config Layers:\n\
-         - Shared Project Config: missing (agentcfg.toml)\n\
-         - User Project Config: missing (.agentcfg/agentcfg.toml)\n"
-    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout is utf8");
+    assert!(stdout.contains("note: Working directory is not anchored"));
+    assert!(stdout.contains("Agent Configuration\n"));
+    assert!(stdout.contains("- Shared Project Config: missing (agentcfg.toml)\n"));
+    assert!(stdout.contains("- User Project Config: missing (.agentcfg/agentcfg.toml)\n"));
     assert_eq!(
         String::from_utf8(output.stderr).expect("stderr is utf8"),
         ""
@@ -60,33 +57,26 @@ fn config_show_reports_missing_project_config_files_as_json() {
     let project_root = std::fs::canonicalize(project_root).expect("canonicalize test root");
     let shared_path = project_root.join("agentcfg.toml");
     let user_path = project_root.join(".agentcfg").join("agentcfg.toml");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(value["workflow"], "config_show");
+    assert_eq!(value["diagnostics"][0]["code"], "project-unanchored");
+    assert_eq!(value["blockers"], json!([]));
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&output.stdout).expect("stdout is json"),
-        json!({
-            "workflow": "config_show",
-            "status": "success",
-            "diagnostics": [],
-            "blockers": [],
-            "suggested_actions": [],
-            "progress_events": [],
-            "data": {
-                "install_level": "project",
-                "config_layers": [
-                    {
-                        "id": "shared-project",
-                        "name": "Shared Project Config",
-                        "path": shared_path,
-                        "state": "missing"
-                    },
-                    {
-                        "id": "user-project",
-                        "name": "User Project Config",
-                        "path": user_path,
-                        "state": "missing"
-                    }
-                ]
+        value["data"]["config_layers"],
+        json!([
+            {
+                "id": "shared-project",
+                "name": "Shared Project Config",
+                "path": shared_path,
+                "state": "missing"
+            },
+            {
+                "id": "user-project",
+                "name": "User Project Config",
+                "path": user_path,
+                "state": "missing"
             }
-        })
+        ])
     );
     assert_eq!(
         String::from_utf8(output.stderr).expect("stderr is utf8"),

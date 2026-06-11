@@ -12,22 +12,50 @@ pub enum UserConfigPathError {
     MissingHomeEnv,
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ProjectRootError {
+    #[error("project root does not exist: {}", .0.display())]
+    NotFound(PathBuf),
+    #[error("project root is not a directory: {}", .0.display())]
+    NotDirectory(PathBuf),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectAnchorSource {
+    GitRoot,
+    ProjectMarkers,
+    ExplicitOverride,
+    Init,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveredProjectRoot {
+    pub root: PathBuf,
+    pub anchor: Option<ProjectAnchorSource>,
+}
+
 /// Workflow-scoped paths derived from the current working directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkflowContext {
     pub project_root: PathBuf,
+    pub anchor: Option<ProjectAnchorSource>,
 }
 
 impl WorkflowContext {
     pub fn from_cwd() -> Result<Self, std::io::Error> {
         let cwd = std::env::current_dir()?;
-        Ok(Self {
-            project_root: resolve_project_root(&cwd),
-        })
+        Ok(build_workflow_context(cwd, None).expect("automatic discovery does not fail"))
     }
 
     pub fn from_project_root(project_root: PathBuf) -> Self {
-        Self { project_root }
+        Self {
+            project_root,
+            anchor: Some(ProjectAnchorSource::ExplicitOverride),
+        }
+    }
+
+    pub fn is_anchored(&self) -> bool {
+        self.anchor.is_some()
     }
 
     pub fn config_layer_path(&self, layer: ConfigLayerId) -> Result<PathBuf, UserConfigPathError> {
@@ -41,12 +69,66 @@ impl WorkflowContext {
     }
 }
 
-pub fn resolve_project_root(start: &Path) -> PathBuf {
-    start
+pub fn build_workflow_context(
+    cwd: PathBuf,
+    explicit_project_root: Option<PathBuf>,
+) -> Result<WorkflowContext, ProjectRootError> {
+    if let Some(root) = explicit_project_root {
+        if !root.exists() {
+            return Err(ProjectRootError::NotFound(root));
+        }
+        if !root.is_dir() {
+            return Err(ProjectRootError::NotDirectory(root));
+        }
+        return Ok(WorkflowContext {
+            project_root: root,
+            anchor: Some(ProjectAnchorSource::ExplicitOverride),
+        });
+    }
+
+    let discovered = discover_project_root(&cwd);
+    Ok(WorkflowContext {
+        project_root: discovered.root,
+        anchor: discovered.anchor,
+    })
+}
+
+pub fn discover_project_root(start: &Path) -> DiscoveredProjectRoot {
+    let git_root = start
         .ancestors()
         .find(|dir| dir.join(".git").exists())
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| start.to_path_buf())
+        .map(Path::to_path_buf);
+    let marker_root = start
+        .ancestors()
+        .find(|dir| has_project_markers(dir))
+        .map(Path::to_path_buf);
+
+    if let Some(root) = git_root {
+        DiscoveredProjectRoot {
+            root,
+            anchor: Some(ProjectAnchorSource::GitRoot),
+        }
+    } else if let Some(root) = marker_root {
+        DiscoveredProjectRoot {
+            root,
+            anchor: Some(ProjectAnchorSource::ProjectMarkers),
+        }
+    } else {
+        DiscoveredProjectRoot {
+            root: start.to_path_buf(),
+            anchor: None,
+        }
+    }
+}
+
+pub fn resolve_project_root(start: &Path) -> DiscoveredProjectRoot {
+    discover_project_root(start)
+}
+
+pub fn has_project_markers(dir: &Path) -> bool {
+    dir.join("agentcfg.toml").is_file()
+        || dir.join(".agentcfg").join("agentcfg.toml").is_file()
+        || dir.join(".agentcfg").is_dir()
 }
 
 pub fn user_config_path() -> Result<PathBuf, UserConfigPathError> {

@@ -3,7 +3,9 @@
 mod client;
 mod clients;
 mod config_doc;
+mod init;
 mod locations;
+mod project_anchor;
 
 use std::path::PathBuf;
 
@@ -19,10 +21,14 @@ pub use config_doc::{
     read_default_clients, write_default_clients, ConfigDocError, PersistedClientSelection,
     SCHEMA_VERSION,
 };
+pub use init::{init, InitData, InitRequest};
 pub use locations::{
-    active_config_layers, layer_label, layer_relative_path_label, persisted_config_layer_value,
-    resolve_project_root, user_config_path, UserConfigPathError, WorkflowContext,
+    active_config_layers, build_workflow_context, discover_project_root, has_project_markers,
+    layer_label, layer_relative_path_label, persisted_config_layer_value, resolve_project_root,
+    user_config_path, DiscoveredProjectRoot, ProjectAnchorSource, ProjectRootError,
+    UserConfigPathError, WorkflowContext,
 };
+pub use project_anchor::{project_anchor_blocker, project_unanchored_diagnostic};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkflowResult<T> {
@@ -118,7 +124,14 @@ pub enum InstallLevel {
 pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData> {
     let layers = active_config_layers(request.install_level);
     let mut blockers = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut config_layers = Vec::new();
+
+    if request.install_level == InstallLevel::Project {
+        if let Some(diagnostic) = project_unanchored_diagnostic(&request.context) {
+            diagnostics.push(diagnostic);
+        }
+    }
 
     for layer in layers {
         match request.context.config_layer_path(layer) {
@@ -135,7 +148,7 @@ pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData>
     WorkflowResult {
         workflow: "config_show",
         status: WorkflowStatus::Success,
-        diagnostics: Vec::new(),
+        diagnostics,
         blockers,
         suggested_actions: Vec::new(),
         progress_events: Vec::new(),
