@@ -14,7 +14,7 @@ V1 must support Skills only, while leaving a clean path for near-term configured
 
 V1 will ship a Rust Cargo workspace with separate Core Crate and CLI Crate boundaries.
 
-The Core Crate provides a presentation-agnostic Workflow API for SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor. Workflows return structured results, diagnostics, blockers, and progress events that any Presentation can render. The CLI Crate parses command-line input, renders terminal output, maps workflow results to exit codes, and delegates domain behavior to the Core Crate.
+The Core Crate provides a presentation-agnostic Workflow API for Init, SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor. Workflows return structured results, diagnostics, blockers, and progress events that any Presentation can render. The CLI Crate parses command-line input, renders terminal output, maps workflow results to exit codes, and delegates domain behavior to the Core Crate.
 
 V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.toml` and Agent Configuration Lockfiles named `agentcfg.lock`. Skill Sources may be GitHub shorthand such as `getsentry/dotagents`, full git URLs, local git repositories, or non-git local filesystem paths. All git-backed Skill Sources support Git Source Refs such as branches, tags, commits, labels that resolve to git refs, and other refs accepted by git. Supported Clients are Codex, Pi, OpenCode, Claude Code, Cline, and Cursor.
 
@@ -36,6 +36,12 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 14. As a User, I want to inspect the Agent Configuration that applies at a selected level, so that I can understand selected Skills, aliases, exclusions, and client selections without reading TOML directly.
 15. As a developer building a Presentation, I want one Workflow API for all V1 workflows, so that CLI, TUI, interactive CLI, GUI, and editor integrations can share behavior.
 16. As a developer adding future configured item kinds, I want shared resolution, lockfile, planning, installation, and ownership contracts, so that subagent configuration and MCP configuration do not fork the workflow model.
+17. As a User working inside a git repository, I want Project Root to resolve to the repository root, so that project-level configuration stays with the repository.
+18. As a User working in a non-git Project that already has project markers, I want Project Root to resolve to the marked directory, so that existing configuration continues to work from subdirectories.
+19. As a User starting a non-git Project, I want `agentcfg init` to establish project markers at the directory I choose, so that later Project Level commands write to the intended location instead of an accidental working directory.
+20. As a User, I want Project Level mutations to fail when no Project Anchor exists, so that I do not create Agent Configuration Files in unintended directories.
+21. As a User, I want `--project-root` to override automatic discovery when I know the correct Project directory, so that automation and explicit workflows remain possible.
+22. As a User running read-only Project Level inspection from an unanchored directory, I want a clear empty or unanchored result rather than silent creation of project files, so that inspection stays safe.
 
 ## Implementation Decisions
 
@@ -49,7 +55,7 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 
 ### Workflow API And CLI Contract
 
-- The Workflow API exposes high-level operations for SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor. The V1 CLI presents SelectSkill and DeselectSkill as `agentcfg skills select` and `agentcfg skills deselect` to emphasize configuration selection rather than installation.
+- The Workflow API exposes high-level operations for Init, SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor. The V1 CLI presents SelectSkill and DeselectSkill as `agentcfg skills select` and `agentcfg skills deselect` to emphasize configuration selection rather than installation. Init is exposed as `agentcfg init` and establishes Project Markers for non-git Projects.
 - Each workflow accepts typed request data and returns a typed result with diagnostics, blockers, progress events, Suggested Actions, and workflow-specific result data suitable for any Presentation.
 - The V1 CLI supports human text output by default and JSON output for every workflow through `--format text|json`, including configuration mutation and materialization workflows. JSON output is rendered from the same structured Workflow API results as human text output; it is not a separate reporting model.
 - In human text mode, final command results are written to stdout and Progress Events are written to stderr. JSON output emits one final structured result object on stdout, writes no Progress Events in V1, and keeps stdout machine-readable.
@@ -62,10 +68,9 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 ### Locations, Layers, And Levels
 
 - Agent Configuration Files are named `agentcfg.toml`; Agent Configuration Lockfiles are named `agentcfg.lock`.
-- Project Root resolves to the top-level git repository directory, or the current working directory when no git repository is found.
 - Shared Project Config lives at `agentcfg.toml` under the Project Root. Its Agent Configuration Lockfile lives at `agentcfg.lock` under the Project Root.
 - User Project Config lives at `.agentcfg/agentcfg.toml` under the Project Root. Its Agent Configuration Lockfile lives at `.agentcfg/agentcfg.lock` under the Project Root.
-- User Config lives at `$XDG_CONFIG_HOME/agentcfg/agentcfg.toml`, or `$HOME/.config/agentcfg/agentcfg.toml` when `XDG_CONFIG_HOME` is not set. Its Agent Configuration Lockfile follows the same directory and is named `agentcfg.lock`.
+- User Config lives at `$XDG_CONFIG_HOME/agentcfg/agentcfg.toml`, or `$HOME/.config/agentcfg/agentcfg.toml` when `XDG_CONFIG_HOME` is not set. Its Agent Configuration Lockfile follows the same directory and is named `agentcfg.lock`. User Level workflows block when neither `XDG_CONFIG_HOME` nor `HOME` is set.
 - Project Managed State is content-addressed under `.agentcfg/state` at the Project Root and is preferred for Project Level workflows.
 - Project Managed State is shared by all active Project Config Layers. Shared Project Config and User Project Config retain separate Agent Configuration Files and Agent Configuration Lockfiles, but Project Level Install prepares their Managed Artifacts under the same Project Managed State root.
 - User Managed State is content-addressed under `$XDG_STATE_HOME/agentcfg`, or `$HOME/.local/state/agentcfg` when `XDG_STATE_HOME` is not set, and is used for User Level workflows.
@@ -73,6 +78,76 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 - V1 Active Config Layers are additive. User Project Config can add Skill Configuration alongside Shared Project Config, but it cannot override, subtract from, or mutate Skill Configuration from Shared Project Config.
 - V1 CLI uses `--config-layer` for commands that mutate or narrow inspection to a specific Agent Configuration File and `--level` for commands that materialize or inspect an Install Level. Help text must describe `--config-layer` as the configuration file to edit or inspect and `--level` as the installation level to inspect or materialize. Install Level help must make clear that Project Level reads both Shared Project Config and User Project Config.
 - `agentcfg preview`, `agentcfg install`, and `agentcfg prune` default to Project Level when `--level` is omitted. User Level preview, installation, and pruning require explicit `--level user`.
+
+#### Project Root Discovery
+
+Project Root must identify a real **Project** before Project Level workflows write Agent Configuration Files, Agent Configuration Lockfiles, or Managed State. V1 replaces the unconditional current-working-directory fallback with **anchored Project Root discovery**.
+
+Discovery starts from the process working directory and walks ancestor directories until one rule matches.
+
+**Priority order:**
+
+1. **Git root** — the nearest ancestor containing a `.git` directory or file.
+2. **Project marker root** — the nearest ancestor containing at least one **Project Marker**:
+   - Shared Project Config file at the directory root
+   - User Project Config file under the project-local configuration directory
+   - the project-local configuration directory itself
+3. **No anchor found** — automatic discovery returns an unanchored result.
+
+Git discovery takes precedence over marker discovery when both could apply at different ancestor depths. Markers are expected to live under the resolved Project Root, not replace git discovery for repositories.
+
+**Explicit override:** when `--project-root` is supplied, discovery is skipped and that directory is used as Project Root. The path must exist and be a directory. Project Level workflows accept `--project-root` to override automatic discovery.
+
+Automatic discovery never silently treats an unmarked current working directory as a writable Project.
+
+#### Project Anchor
+
+A **Project Anchor** is evidence that a directory is an intentional **Project** for Project Level workflows.
+
+Anchor sources, in precedence for writability:
+
+1. Git root discovery
+2. Project marker discovery
+3. Explicit `--project-root`
+4. Successful `init` at the chosen Project Root
+
+#### Workflow Context
+
+All workflows build a small **Workflow Context** from the current working directory, optional explicit Project Root, and environment variables for User Level paths. Project Root resolution belongs in this context. User Level path resolution remains separate.
+
+#### Read-Only Versus Mutation Behavior
+
+**Project Level read-only workflows** (`config show`, `clients show`, `status`, `doctor`, `preview`):
+
+- Use anchored discovery when available.
+- When no anchor is found and `--project-root` is omitted, they may inspect the working directory as an **unanchored** Project and report empty or missing configuration, accompanied by a Diagnostic explaining that the directory is not anchored.
+- Read-only workflows must not create project markers or Agent Configuration Files.
+
+**Project Level mutation workflows** (configuration mutation, `init`, `install`, `prune`):
+
+- Require a resolved Project Anchor before writing.
+- When discovery finds no git root, no project markers, and `--project-root` is omitted, block before writing with a structured Diagnostic and Suggested Actions such as `agentcfg init` or `agentcfg ... --project-root <path>`.
+- `init` is the exception that may create markers to establish a new anchor at the chosen Project Root.
+
+User Level workflows are unaffected except where they depend on resolvable User config paths.
+
+#### Init Workflow
+
+V1 adds `agentcfg init` as the explicit non-git onboarding path and the User-facing way to say “this directory is my Project” when git discovery does not apply.
+
+- Defaults to Project Level.
+- Resolves Project Root from explicit `--project-root`, else the current working directory when no anchor exists yet, else discovered anchor.
+- Creates the minimum project-local marker structure needed for later Project Level mutations.
+- Does not install Skills, write lockfile pins, or mutate Managed Artifacts.
+- Idempotent when project markers already exist at the target Project Root.
+
+Help text for Project Level workflows must explain that Project Root comes from git discovery, existing project markers, explicit `--project-root`, or `init`. Mutation commands must surface anchor blockers consistently in text and JSON output.
+
+#### Deferred Location Decisions
+
+- Git-based discovery through `git rev-parse --show-toplevel` instead of `.git` presence alone.
+- Requiring git for all Project Level writes with no non-git path except explicit `--project-root`.
+- Showing all Install Levels in one read-only command by default.
 
 ### Configuration Inspection And Mutation
 
@@ -143,7 +218,7 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 
 ### Workflow Surfaces And CLI Contract
 
-- Test the Core Crate through public Workflow API entry points for SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor.
+- Test the Core Crate through public Workflow API entry points for Init, SelectSkill, DeselectSkill, ConfigShow, Preview, Install, Prune, Status, and Doctor.
 - Test CLI behavior at the command boundary: arguments map to workflow requests, `--config-layer` is accepted for configuration mutation and configuration show narrowing, `--level` is accepted for materialization, assessment, and level-scoped configuration show commands, help text explains the distinction, terminal output renders key diagnostics, and exit codes reflect workflow-specific success, action-required assessment findings, blockers, invalid input, and execution failures.
 - Test `--format text|json` for every workflow, including configuration mutation and materialization workflows, with `text` as the default. In text mode, final command results are written to stdout and Progress Events to stderr. JSON output is an alternate rendering of the same structured Workflow API results, emits one final structured result object on stdout, writes no Progress Events in V1, keeps stdout machine-readable, preserves diagnostics, blockers, planned changes, completed changes, skipped artifacts, Config Layer provenance, Install Level partitioning, exit-relevant status, and Suggested Actions, and keeps process exit codes authoritative for success or failure.
 - Test introduced Diagnostic codes as stable structured outputs with contextual data, without requiring the V1 spec to enumerate the complete code catalog upfront.
@@ -152,6 +227,7 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 ### Config Documents, Layers, And Inspection
 
 - Test ConfigDoc parsing and writing with `agentcfg.toml`, including Config Layer values, Default Client Selection, entry-level client selection, Skill Sources, Skill Selection, Excluded Skills, and Skill Aliases.
+- Test Project Root discovery and Project Anchor guards through read-only and mutation workflows: table-driven tests for git root discovery, project marker discovery, explicit `--project-root`, unanchored current working directory, and ancestor walks from subdirectories; mutation workflows block before write when unanchored; read-only workflows do not create files when unanchored; `init` creates markers, is idempotent, and enables subsequent Project Level mutations in non-git fixture directories; CLI tests for `--project-root`, blocker exit codes, Diagnostic text and JSON shape, and Suggested Actions for unanchored mutation attempts. Mock only filesystem layout and environment variables; do not shell out to git in unit tests unless using isolated fixture repositories.
 - Test ConfigShow through `agentcfg config show`: it defaults to Project Level, reports all active Config Layers for the selected level partitioned by Config Layer, supports `--config-layer` narrowing, requires `--level user` for User Config inspection, renders V1 Skill Configuration fields, validates schema and local shape, does not validate source-dependent facts, does not read Agent Configuration Lockfiles, does not perform Source Enumeration or Source Resolution, does not expand all-skill selections from source contents, and does not mutate Agent Configuration Files, lockfiles, Managed State, or Client Search Locations.
 - Test additive Active Config Layer semantics: User Project Config contributions are included alongside Shared Project Config, but exclusions, aliases, client choices, and removals in one Config Layer do not alter another Config Layer's Skill Configuration.
 
@@ -203,7 +279,13 @@ V1 supports Skill Configuration using Agent Configuration Files named `agentcfg.
 - Remote registries or hosted package indexes beyond git and local filesystem sources.
 - Authentication UX beyond reporting source access failures and using the user's existing git environment.
 - Full schema migration framework for future config versions.
+- Auto-detecting Project Root from Client Search Locations or Managed State alone.
+- Migrating or cleaning up accidentally created configuration in previously unanchored directories.
+- Repository hosting provider integration or monorepo-specific root selection.
+- Replacing `init` with interactive confirmation prompts in V1.
 
 ## Open Questions
 
-None.
+- Should unanchored read-only inspection default to the current working directory, or require `--project-root` or discovery like mutations?
+- Should `init` also create an empty Shared Project Config file, or only the project-local marker directory structure?
+- When should git-based discovery replace `.git` presence checks?

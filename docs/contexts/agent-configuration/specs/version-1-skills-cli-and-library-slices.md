@@ -1,6 +1,6 @@
 # Version 1 Skills CLI and Library Slices
 
-**Status:** Revised after domain check
+**Status:** Revised after project root resolution spec
 **Spec:** [version-1-skills-cli-and-library.md](version-1-skills-cli-and-library.md)
 **Date:** 2026-06-10
 
@@ -44,26 +44,60 @@ Make Config Layer and Install Level location resolution real, then add Default C
 
 ### Acceptance criteria
 
-- [ ] Project Root resolves to the top-level git directory or current working directory when no git repository exists.
 - [ ] Shared Project Config, User Project Config, and User Config paths are resolved according to the spec.
 - [ ] Project Level reads active Config Layers in Shared Project Config then User Project Config order.
 - [ ] User Level reads User Config only.
+- [ ] User Config path resolution blocks when neither `XDG_CONFIG_HOME` nor `HOME` is set.
 - [ ] Known V1 Client names are available for ConfigDoc parsing and config mutation validation without requiring Client Search Locations or Client Binding Artifact shapes.
 - [ ] `agentcfg clients show` reports Default Client Selection partitioned by Config Layer.
 - [ ] `agentcfg clients set <client>...`, `add`, and `remove` mutate only the selected Config Layer.
 - [ ] Project Level client mutations default to User Project Config.
 - [ ] Shared Project Config mutation requires `--config-layer shared-project`.
 - [ ] User Config inspection and mutation require `--level user`.
+- [ ] ConfigDoc client mutations preserve unrelated TOML content such as comments and key order.
 
 ### Testing scope
 
-- Core tests for location resolution, active layer selection, Config Layer ownership, and known V1 Client name validation.
+- Core tests for location resolution, active layer selection, Config Layer ownership, and known Client name validation.
 - CLI tests for `clients show/set/add/remove`, `--level`, `--config-layer`, text/JSON output, and exit codes.
 - Mutation tests verify no Managed Artifact writes happen.
+- Deferred to slice 2.5: anchored Project Root discovery, `--project-root`, mutation blocking in unanchored directories, and `init`.
 
 ### Blocked by
 
 - Slice 1.
+
+## 2.5. Project Root Discovery And Init
+
+**Type:** AFK
+
+### What to build
+
+Replace the unsafe cwd-as-Project-Root fallback with anchored Project Root discovery, explicit `--project-root`, mutation guards, and an `agentcfg init` workflow for non-git Projects.
+
+### Acceptance criteria
+
+- [ ] Project Root discovery walks ancestors from cwd and resolves git repository root before project marker root.
+- [ ] Project markers include Shared Project Config, User Project Config, and the project-local configuration directory under the Project Root.
+- [ ] Project Level workflows accept `--project-root` to override automatic discovery.
+- [ ] Project Level mutation workflows block before writing when no Project Anchor exists unless `--project-root` is supplied.
+- [ ] Unanchored mutation blockers include structured Diagnostics and Suggested Actions for `agentcfg init` or `--project-root`.
+- [ ] `agentcfg init` establishes project markers at the chosen Project Root without writing lockfile pins or Managed Artifacts.
+- [ ] `init` is idempotent when project markers already exist at the target Project Root.
+- [ ] Project Level read-only workflows do not create project markers or Agent Configuration Files when unanchored.
+- [ ] Read-only workflows may report an unanchored empty state with a Diagnostic when no anchor is found and `--project-root` is omitted.
+
+### Testing scope
+
+- Table-driven core tests for git root discovery, marker root discovery, explicit override, and unanchored directories.
+- Core tests that mutation workflows block before write when unanchored.
+- Core and CLI tests for `init` creating markers and enabling subsequent Project Level mutations in non-git fixtures.
+- CLI tests for `--project-root`, blocker exit codes, and text/JSON Diagnostics.
+- Do not shell out to the git binary in unit tests unless using isolated fixture repositories.
+
+### Blocked by
+
+- Slice 2.
 
 ## 3. Select And Deselect Explicit Skills
 
@@ -94,6 +128,7 @@ Implement explicit Skill Configuration mutation for `agentcfg skills select` and
 ### Blocked by
 
 - Slice 2.
+- Slice 2.5.
 
 ## 4. Full Config Show For Skill Configuration
 

@@ -1,8 +1,28 @@
 //! Core workflow API for agentcfg.
 
+mod client;
+mod clients;
+mod config_doc;
+mod locations;
+
 use std::path::PathBuf;
 
 use serde::Serialize;
+
+pub use client::{all_clients, parse_client_name, Client};
+pub use clients::{
+    clients_add, clients_remove, clients_set, clients_show, resolve_mutation_layer,
+    ClientsAddRequest, ClientsLayerReport, ClientsMutationData, ClientsRemoveRequest,
+    ClientsSetRequest, ClientsShowData, ClientsShowRequest,
+};
+pub use config_doc::{
+    read_default_clients, write_default_clients, ConfigDocError, PersistedClientSelection,
+    SCHEMA_VERSION,
+};
+pub use locations::{
+    active_config_layers, layer_label, layer_relative_path_label, persisted_config_layer_value,
+    resolve_project_root, user_config_path, UserConfigPathError, WorkflowContext,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkflowResult<T> {
@@ -47,14 +67,14 @@ pub struct ProgressEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigShowRequest {
     pub install_level: InstallLevel,
-    pub project_root: PathBuf,
+    pub context: WorkflowContext,
 }
 
 impl ConfigShowRequest {
-    pub fn project(project_root: impl Into<PathBuf>) -> Self {
+    pub fn project(context: WorkflowContext) -> Self {
         Self {
             install_level: InstallLevel::Project,
-            project_root: project_root.into(),
+            context,
         }
     }
 }
@@ -78,9 +98,9 @@ pub struct ConfigLayerReport {
 pub enum ConfigLayerId {
     SharedProject,
     UserProject,
+    User,
 }
 
-/// Local Agent Configuration File state; later parsing slices can add authored, invalid, and unreadable states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConfigLayerState {
@@ -92,35 +112,36 @@ pub enum ConfigLayerState {
 #[serde(rename_all = "kebab-case")]
 pub enum InstallLevel {
     Project,
+    User,
 }
 
 pub fn config_show(request: ConfigShowRequest) -> WorkflowResult<ConfigShowData> {
-    let shared_project_path = request.project_root.join("agentcfg.toml");
-    let user_project_path = request.project_root.join(".agentcfg").join("agentcfg.toml");
+    let layers = active_config_layers(request.install_level);
+    let mut blockers = Vec::new();
+    let mut config_layers = Vec::new();
+
+    for layer in layers {
+        match request.context.config_layer_path(layer) {
+            Ok(path) => config_layers.push(ConfigLayerReport {
+                id: layer,
+                name: layer_label(layer),
+                state: config_layer_state(&path),
+                path,
+            }),
+            Err(error) => blockers.push(user_config_path_blocker(error)),
+        }
+    }
 
     WorkflowResult {
         workflow: "config_show",
         status: WorkflowStatus::Success,
         diagnostics: Vec::new(),
-        blockers: Vec::new(),
+        blockers,
         suggested_actions: Vec::new(),
         progress_events: Vec::new(),
         data: ConfigShowData {
             install_level: request.install_level,
-            config_layers: vec![
-                ConfigLayerReport {
-                    id: ConfigLayerId::SharedProject,
-                    name: "Shared Project Config",
-                    state: config_layer_state(&shared_project_path),
-                    path: shared_project_path,
-                },
-                ConfigLayerReport {
-                    id: ConfigLayerId::UserProject,
-                    name: "User Project Config",
-                    state: config_layer_state(&user_project_path),
-                    path: user_project_path,
-                },
-            ],
+            config_layers,
         },
     }
 }
@@ -130,5 +151,17 @@ fn config_layer_state(path: &std::path::Path) -> ConfigLayerState {
         ConfigLayerState::Empty
     } else {
         ConfigLayerState::Missing
+    }
+}
+
+fn user_config_path_blocker(error: UserConfigPathError) -> Diagnostic {
+    Diagnostic {
+        code: "user-config-path-unresolved".to_string(),
+        message: format!("Cannot resolve User Config path: {error}"),
+        context: vec![(
+            "config-layer".to_string(),
+            layer_relative_path_label(ConfigLayerId::User).to_string(),
+        )],
+        suggested_actions: Vec::new(),
     }
 }

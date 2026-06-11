@@ -23,7 +23,7 @@ V1 Skill Configuration schema, command mechanics, source enumeration, selection,
 
 ### Layers, Levels, And Ownership
 
-- Project Root resolves to the top-level git repository directory, or the current working directory when no git repository is found.
+- Project Root resolves from git repository root discovery, existing Project Markers, explicit `--project-root`, or `init`. Project Level mutation workflows require a Project Anchor and must not treat an unmarked current working directory as a writable Project.
 - Config Layers own their Agent Configuration Files, Agent Configuration Lockfiles, and declarations. Lockfile writes and planned lockfile changes are attributed to the Config Layer that owns the declaration.
 - Active Project Config Layers are additive. User Project Config may add declarations alongside Shared Project Config, but it may not override, subtract from, or mutate Shared Project Config.
 - Project Managed State is shared by all active Project Config Layers. Shared Project Config and User Project Config keep separate files and lockfiles, but Project Level materialization prepares Managed Artifacts under the same Project Managed State root.
