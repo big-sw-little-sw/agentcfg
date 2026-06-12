@@ -63,6 +63,49 @@ fn skills_select_persists_entry_id() {
 }
 
 #[test]
+fn skills_select_rejects_duplicate_entry_id() {
+    let project_root = test_project("cli-select-duplicate-entry-id");
+    std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
+    std::fs::write(
+        project_root.join(".agentcfg/agentcfg.toml"),
+        r#"
+version = 1
+config-layer = "user-project"
+clients = ["codex"]
+
+[[skills]]
+id = "team"
+source = "./skills"
+include = "all"
+"#,
+    )
+    .expect("write user project config");
+
+    let output = agentcfg()
+        .args([
+            "skills",
+            "select",
+            "find-bugs",
+            "--id",
+            "team",
+            "--source",
+            "./other",
+        ])
+        .current_dir(&project_root)
+        .output()
+        .expect("run agentcfg");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("already declared"));
+    assert!(stderr.contains("team"));
+
+    let content = std::fs::read_to_string(project_root.join(".agentcfg/agentcfg.toml"))
+        .expect("read user project config");
+    assert!(!content.contains("find-bugs"));
+}
+
+#[test]
 fn skills_select_writes_explicit_included_skill_as_text() {
     let project_root = test_project("cli-select-text");
     std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");

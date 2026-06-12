@@ -186,6 +186,114 @@ fn validate_entry_ids_accepts_unique_optional_ids() {
 }
 
 #[test]
+fn validate_entry_ids_rejects_duplicate_ids() {
+    let entries = vec![
+        SkillConfigurationEntry {
+            id: Some("team".to_string()),
+            source: "./skills".to_string(),
+            git_ref: None,
+            include: SkillSelection::Explicit(vec!["find-bugs".to_string()]),
+            clients: None,
+            exclude: Vec::new(),
+            aliases: Default::default(),
+        },
+        SkillConfigurationEntry {
+            id: Some("team".to_string()),
+            source: "./other".to_string(),
+            git_ref: None,
+            include: SkillSelection::Explicit(vec!["code-review".to_string()]),
+            clients: None,
+            exclude: Vec::new(),
+            aliases: Default::default(),
+        },
+    ];
+
+    let error = validate_entry_ids(&entries).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("duplicate Skill Configuration Entry Id 'team'"));
+}
+
+#[test]
+fn select_skill_rejects_duplicate_entry_id_on_new_entry() {
+    let project_root = test_project("select-duplicate-entry-id");
+    std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
+    std::fs::write(
+        project_root.join(".agentcfg/agentcfg.toml"),
+        r#"
+version = 1
+config-layer = "user-project"
+clients = ["codex"]
+
+[[skills]]
+id = "team"
+source = "./skills"
+include = "all"
+"#,
+    )
+    .expect("write user project config");
+
+    let result = select_skill(SelectSkillRequest {
+        install_level: InstallLevel::Project,
+        context: WorkflowContext::from_project_root(project_root.clone()),
+        config_layer: None,
+        source_skill_name: "find-bugs".to_string(),
+        entry_id: Some("team".to_string()),
+        source: Some("./other".to_string()),
+        git_ref: None,
+    });
+
+    assert_eq!(result.blockers.len(), 1);
+    assert_eq!(result.blockers[0].code, "duplicate-entry-id");
+    assert!(result.blockers[0].message.contains("team"));
+
+    let content = std::fs::read_to_string(project_root.join(".agentcfg/agentcfg.toml"))
+        .expect("read user project config");
+    assert_eq!(content.matches("[[skills]]").count(), 1);
+    assert!(!content.contains("find-bugs"));
+}
+
+#[test]
+fn write_skill_configuration_rejects_duplicate_entry_ids() {
+    let path = test_path("write-duplicate-entry-ids");
+    std::fs::write(
+        &path,
+        "version = 1\nconfig-layer = \"user-project\"\nclients = [\"codex\"]\n",
+    )
+    .expect("write config");
+
+    let configuration = SkillConfiguration {
+        entries: vec![
+            SkillConfigurationEntry {
+                id: Some("team".to_string()),
+                source: "./skills".to_string(),
+                git_ref: None,
+                include: SkillSelection::Explicit(vec!["find-bugs".to_string()]),
+                clients: None,
+                exclude: Vec::new(),
+                aliases: Default::default(),
+            },
+            SkillConfigurationEntry {
+                id: Some("team".to_string()),
+                source: "./other".to_string(),
+                git_ref: None,
+                include: SkillSelection::Explicit(vec!["code-review".to_string()]),
+                clients: None,
+                exclude: Vec::new(),
+                aliases: Default::default(),
+            },
+        ],
+    };
+
+    let error =
+        write_skill_configuration(path.as_path(), ConfigLayerId::UserProject, &configuration)
+            .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("duplicate Skill Configuration Entry Id 'team'"));
+}
+
+#[test]
 fn select_skill_persists_github_shorthand_with_ref() {
     let project_root = test_project("select-github-ref");
     std::fs::create_dir_all(project_root.join(".agentcfg")).expect("create project marker");
