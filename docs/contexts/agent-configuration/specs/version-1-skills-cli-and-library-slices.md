@@ -114,6 +114,8 @@ Implement explicit Skill Configuration mutation for `agentcfg skills select` and
 - [ ] Selecting a Skill fails before writing when the entry would have no final client selection.
 - [ ] Selecting an explicit Included Skill appends to a compatible existing Skill Configuration Entry.
 - [ ] Incompatible selections create distinct entries.
+- [ ] Optional Skill Configuration Entry Ids persist on `[[skills]]` rows and are unique within a Config Layer when declared.
+- [ ] `skills select` and `skills deselect` accept `--id` to target an entry by Skill Configuration Entry Id; locator-based selection remains available when no Entry Id is declared.
 - [ ] `skills deselect` removes explicit Included Skills from the selected Config Layer only.
 - [ ] Deselecting from User Project Config does not hide Skill Configuration from Shared Project Config.
 - [ ] Mutation output tells the User to run Install, and Deselect Skill output also mentions Prune for stale Managed State.
@@ -384,7 +386,7 @@ Implement Skill Configuration Entry client workflows and derive updated Client B
 - [ ] `skills clients set` replaces entry-level clients.
 - [ ] `skills clients add` and `remove` create explicit entry-level clients when the entry inherited the Default Client Selection.
 - [ ] `skills clients inherit` removes entry-level clients so the entry inherits Default Client Selection again.
-- [ ] Entry selection uses explicit selectors such as `--source`, `--skill`, and disambiguators such as `--ref` or `--path`.
+- [ ] Entry selection uses `--id` when declared, or explicit selectors such as `--source`, `--skill`, and `--ref` when needed.
 - [ ] `--skill` matches Source Skill Name, not Skill Alias.
 - [ ] Zero-match and multiple-match selectors fail with enough entry detail for disambiguation.
 - [ ] Changing one Skill Configuration Entry's client selection updates the Client Bindings derived from that entry without changing other entries.

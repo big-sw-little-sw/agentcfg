@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use agentcfg_core::{
     build_workflow_context, clients_add, clients_remove, clients_set, clients_show, config_show,
-    init, layer_relative_path_label, parse_client_name, Client, ClientsAddRequest,
-    ClientsMutationData, ClientsRemoveRequest, ClientsSetRequest, ClientsShowData,
-    ClientsShowRequest, ConfigLayerId, ConfigLayerState, ConfigShowData, ConfigShowRequest,
-    Diagnostic, InitData, InitRequest, InstallLevel, PersistedClientSelection, WorkflowContext,
+    deselect_skill, init, layer_relative_path_label, parse_client_name, select_skill, Client,
+    ClientsAddRequest, ClientsMutationData, ClientsRemoveRequest, ClientsSetRequest,
+    ClientsShowData, ClientsShowRequest, ConfigLayerId, ConfigLayerState, ConfigShowData,
+    ConfigShowRequest, DeselectSkillRequest, Diagnostic, InitData, InitRequest, InstallLevel,
+    PersistedClientSelection, SelectSkillRequest, SkillMutationData, WorkflowContext,
     WorkflowResult,
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -38,6 +39,10 @@ fn run() -> i32 {
             ClientsCommand::Remove(args) => run_clients_remove(args),
         },
         Command::Init(args) => run_init(args),
+        Command::Skills { command } => match command {
+            SkillsCommand::Select(args) => run_skills_select(args),
+            SkillsCommand::Deselect(args) => run_skills_deselect(args),
+        },
     }
 }
 
@@ -59,11 +64,21 @@ enum Command {
         command: ClientsCommand,
     },
     Init(InitArgs),
+    Skills {
+        #[command(subcommand)]
+        command: SkillsCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
     Show(ConfigShowArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillsCommand {
+    Select(SkillsSelectArgs),
+    Deselect(SkillsDeselectArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -115,6 +130,49 @@ struct ClientsMutationArgs {
     level: LevelArg,
     #[arg(long, value_enum)]
     config_layer: Option<ConfigLayerArg>,
+}
+
+#[derive(Debug, Args)]
+struct SkillsMutationArgs {
+    #[command(flatten)]
+    workflow: WorkflowArgs,
+    #[arg(long, value_enum, default_value = "text")]
+    format: OutputFormat,
+    #[arg(long, value_enum, default_value = "project")]
+    level: LevelArg,
+    #[arg(long, value_enum)]
+    config_layer: Option<ConfigLayerArg>,
+    #[arg(
+        long = "id",
+        help = "Skill Configuration Entry Id for selecting or creating an entry."
+    )]
+    entry_id: Option<String>,
+    #[arg(
+        long,
+        help = "Skill Source locator such as a local path, GitHub shorthand, or full git URL."
+    )]
+    source: Option<String>,
+    #[arg(
+        long = "ref",
+        help = "Git Source Ref for git-backed Skill Sources such as GitHub shorthand or full git URLs."
+    )]
+    git_ref: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct SkillsSelectArgs {
+    #[command(flatten)]
+    mutation: SkillsMutationArgs,
+    #[arg(help = "Source Skill Name to add to Skill Selection.")]
+    source_skill_name: String,
+}
+
+#[derive(Debug, Args)]
+struct SkillsDeselectArgs {
+    #[command(flatten)]
+    mutation: SkillsMutationArgs,
+    #[arg(help = "Source Skill Name to remove from Skill Selection.")]
+    source_skill_name: String,
 }
 
 #[derive(Debug, Args)]
@@ -191,6 +249,42 @@ fn run_clients_remove(args: ClientsMutationArgs) -> i32 {
             clients: request.clients,
         })
     })
+}
+
+fn run_skills_select(args: SkillsSelectArgs) -> i32 {
+    let context = match workflow_context(args.mutation.workflow.project_root) {
+        Ok(context) => context,
+        Err(code) => return code,
+    };
+
+    let result = select_skill(SelectSkillRequest {
+        install_level: args.mutation.level.into(),
+        context,
+        config_layer: args.mutation.config_layer.map(Into::into),
+        source_skill_name: args.source_skill_name,
+        entry_id: args.mutation.entry_id,
+        source: args.mutation.source,
+        git_ref: args.mutation.git_ref,
+    });
+    render_workflow(args.mutation.format, &result, render_select_skill_text)
+}
+
+fn run_skills_deselect(args: SkillsDeselectArgs) -> i32 {
+    let context = match workflow_context(args.mutation.workflow.project_root) {
+        Ok(context) => context,
+        Err(code) => return code,
+    };
+
+    let result = deselect_skill(DeselectSkillRequest {
+        install_level: args.mutation.level.into(),
+        context,
+        config_layer: args.mutation.config_layer.map(Into::into),
+        source_skill_name: args.source_skill_name,
+        entry_id: args.mutation.entry_id,
+        source: args.mutation.source,
+        git_ref: args.mutation.git_ref,
+    });
+    render_workflow(args.mutation.format, &result, render_deselect_skill_text)
 }
 
 fn run_init(args: InitArgs) -> i32 {
@@ -323,6 +417,75 @@ fn render_clients_show_text(result: &WorkflowResult<ClientsShowData>) -> String 
             default_clients_label(layer.default_clients.as_ref()),
             layer_relative_path_label(layer.id)
         ));
+    }
+
+    output
+}
+
+fn render_select_skill_text(result: &WorkflowResult<SkillMutationData>) -> String {
+    let mut output = String::new();
+    output.push_str("Skill selected\n");
+    output.push_str(&format!(
+        "Install Level: {}\n",
+        install_level_label(result.data.install_level)
+    ));
+    output.push_str(&format!(
+        "Config Layer: {}\n",
+        result.data.config_layer.name
+    ));
+    if let Some(entry_id) = &result.data.entry_id {
+        output.push_str(&format!("Entry Id: {entry_id}\n"));
+    }
+    output.push_str(&format!("Skill Source: {}\n", result.data.source));
+    if let Some(git_ref) = &result.data.git_ref {
+        output.push_str(&format!("Git Source Ref: {git_ref}\n"));
+    }
+    output.push_str(&format!(
+        "Source Skill Name: {}\n",
+        result.data.source_skill_name
+    ));
+    output.push_str(&format!(
+        "Clients: {}\n",
+        default_clients_label(Some(&result.data.clients))
+    ));
+    output.push_str("Change client selection: agentcfg skills clients ...\n");
+
+    if result.data.changed {
+        for action in &result.suggested_actions {
+            output.push_str(&format!("Next: {} — {}\n", action.command, action.reason));
+        }
+    }
+
+    output
+}
+
+fn render_deselect_skill_text(result: &WorkflowResult<SkillMutationData>) -> String {
+    let mut output = String::new();
+    output.push_str("Skill deselected\n");
+    output.push_str(&format!(
+        "Install Level: {}\n",
+        install_level_label(result.data.install_level)
+    ));
+    output.push_str(&format!(
+        "Config Layer: {}\n",
+        result.data.config_layer.name
+    ));
+    if let Some(entry_id) = &result.data.entry_id {
+        output.push_str(&format!("Entry Id: {entry_id}\n"));
+    }
+    output.push_str(&format!("Skill Source: {}\n", result.data.source));
+    if let Some(git_ref) = &result.data.git_ref {
+        output.push_str(&format!("Git Source Ref: {git_ref}\n"));
+    }
+    output.push_str(&format!(
+        "Source Skill Name: {}\n",
+        result.data.source_skill_name
+    ));
+
+    if result.data.changed {
+        for action in &result.suggested_actions {
+            output.push_str(&format!("Next: {} — {}\n", action.command, action.reason));
+        }
     }
 
     output

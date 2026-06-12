@@ -6,6 +6,8 @@ mod config_doc;
 mod init;
 mod locations;
 mod project_anchor;
+mod skills;
+mod skills_config;
 
 use std::path::PathBuf;
 
@@ -31,6 +33,13 @@ pub use locations::{
     PROJECT_LOCAL_CONFIG_DIR_NAME, USER_CONFIG_DIR_NAME, USER_PROJECT_CONFIG_RELATIVE_PATH,
 };
 pub use project_anchor::{project_anchor_blocker, project_unanchored_diagnostic};
+pub use skills::{
+    deselect_skill, select_skill, DeselectSkillRequest, SelectSkillRequest, SkillMutationData,
+};
+pub use skills_config::{
+    read_skill_configuration, validate_entry_ids, write_skill_configuration, SkillConfiguration,
+    SkillConfigurationEntry, SkillSelection,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkflowResult<T> {
