@@ -422,9 +422,14 @@ fn render_clients_show_text(result: &WorkflowResult<ClientsShowData>) -> String 
     output
 }
 
-fn render_select_skill_text(result: &WorkflowResult<SkillMutationData>) -> String {
+fn render_skill_mutation_text(
+    result: &WorkflowResult<SkillMutationData>,
+    headline: &str,
+    show_clients: bool,
+) -> String {
     let mut output = String::new();
-    output.push_str("Skill selected\n");
+    output.push_str(headline);
+    output.push('\n');
     output.push_str(&format!(
         "Install Level: {}\n",
         install_level_label(result.data.install_level)
@@ -444,11 +449,13 @@ fn render_select_skill_text(result: &WorkflowResult<SkillMutationData>) -> Strin
         "Source Skill Name: {}\n",
         result.data.source_skill_name
     ));
-    output.push_str(&format!(
-        "Clients: {}\n",
-        default_clients_label(Some(&result.data.clients))
-    ));
-    output.push_str("Change client selection: agentcfg skills clients ...\n");
+    if show_clients {
+        output.push_str(&format!(
+            "Clients: {}\n",
+            default_clients_label(Some(&result.data.clients))
+        ));
+        output.push_str("Change client selection: agentcfg skills clients ...\n");
+    }
 
     if result.data.changed {
         for action in &result.suggested_actions {
@@ -459,36 +466,12 @@ fn render_select_skill_text(result: &WorkflowResult<SkillMutationData>) -> Strin
     output
 }
 
+fn render_select_skill_text(result: &WorkflowResult<SkillMutationData>) -> String {
+    render_skill_mutation_text(result, "Skill selected", true)
+}
+
 fn render_deselect_skill_text(result: &WorkflowResult<SkillMutationData>) -> String {
-    let mut output = String::new();
-    output.push_str("Skill deselected\n");
-    output.push_str(&format!(
-        "Install Level: {}\n",
-        install_level_label(result.data.install_level)
-    ));
-    output.push_str(&format!(
-        "Config Layer: {}\n",
-        result.data.config_layer.name
-    ));
-    if let Some(entry_id) = &result.data.entry_id {
-        output.push_str(&format!("Entry Id: {entry_id}\n"));
-    }
-    output.push_str(&format!("Skill Source: {}\n", result.data.source));
-    if let Some(git_ref) = &result.data.git_ref {
-        output.push_str(&format!("Git Source Ref: {git_ref}\n"));
-    }
-    output.push_str(&format!(
-        "Source Skill Name: {}\n",
-        result.data.source_skill_name
-    ));
-
-    if result.data.changed {
-        for action in &result.suggested_actions {
-            output.push_str(&format!("Next: {} — {}\n", action.command, action.reason));
-        }
-    }
-
-    output
+    render_skill_mutation_text(result, "Skill deselected", false)
 }
 
 fn render_clients_mutation_text(result: &WorkflowResult<ClientsMutationData>) -> String {
