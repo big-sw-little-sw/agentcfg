@@ -104,9 +104,9 @@ version = 1
 config-layer = "shared-project"
 note = "keep-me"
 
-[[skills.sources]]
-id = "team"
-path = "../skills"
+[[skills]]
+source = "../skills"
+include = ["team-skill"]
 "#,
     )
     .expect("write config");
@@ -120,7 +120,7 @@ path = "../skills"
 
     let content = std::fs::read_to_string(&path).expect("read config");
     assert!(content.contains("note = \"keep-me\""));
-    assert!(content.contains("id = \"team\""));
+    assert!(content.contains("source = \"../skills\""));
     assert!(content.contains("clients = [\"codex\"]"));
 }
 

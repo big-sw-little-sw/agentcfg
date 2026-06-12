@@ -52,4 +52,5 @@ V1 Skill Configuration schema, command mechanics, source enumeration, selection,
 - Configured item kinds define their own source enumeration, naming, selection, aliasing, content preparation, validation, and client adaptation behind the shared workflow model.
 - A Configured Item Name must be unique across Active Config Layers after item-kind-specific naming or alias resolution, even when duplicate entries target different Clients.
 - A Config Layer may provide Default Client Selection for configured item entries. Entry-level clients replace that default, and every entry must have a final client selection after ConfigRequest normalization.
+- When declared, Skill Configuration Entry Ids must be unique within a Config Layer. Duplicate Entry Ids fail validation before mutation or PinnedConfig creation.
 - Unsupported configured item and Client combinations fail validation before PinnedConfig creation.

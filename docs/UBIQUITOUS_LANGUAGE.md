@@ -15,8 +15,12 @@ The currently implemented part of **Agent Configuration** that declares which sk
 _Avoid_: skill setup, skill install config
 
 **Skill Configuration Entry**:
-A persisted entry in one **Config Layer** that selects **Skills** from one **Skill Source** and declares or inherits which **Clients** should receive derived **Client Bindings** for those selected Skills.
+A persisted entry in one **Config Layer** that selects **Skills** from one **Skill Source** and declares or inherits which **Clients** should receive derived **Client Bindings** for those selected Skills. May optionally declare a **Skill Configuration Entry Id** for CLI selection within that Config Layer.
 _Avoid_: per-client skill entry, duplicate client entry
+
+**Skill Configuration Entry Id**:
+An optional user-assigned name on a **Skill Configuration Entry** within one **Config Layer**. Entry Ids let CLI workflows select that entry without repeating the full **Skill Source** locator and **Git Source Ref**.
+_Avoid_: source id, skill id, alias (Skill Alias is different)
 
 **Default Client Selection**:
 A Config Layer-level client selection inherited by configured item entries that do not declare entry-level clients.
