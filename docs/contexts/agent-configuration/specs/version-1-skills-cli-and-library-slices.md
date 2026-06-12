@@ -98,7 +98,7 @@ Replace the unsafe cwd-as-Project-Root fallback with anchored Project Root disco
 
 - Slice 2.
 
-## 3. Select And Deselect Explicit Skills
+## 3. Select And Deselect Explicit Skills [done]
 
 **Type:** AFK
 
